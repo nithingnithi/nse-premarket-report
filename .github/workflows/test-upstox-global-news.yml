@@ -1,9 +1,6 @@
 name: Test Upstox global quotes and news
 
 "on":
-  push:
-    branches: ["codex/global-news-access"]
-    paths: [".github/workflows/test-upstox-global-news.yml"]
   workflow_dispatch:
 
 permissions: {}
