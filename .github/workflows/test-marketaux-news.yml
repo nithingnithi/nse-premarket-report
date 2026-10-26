@@ -1,9 +1,6 @@
 name: Test Marketaux news
 
 "on":
-  push:
-    branches: ["codex/marketaux-news-access"]
-    paths: [".github/workflows/test-marketaux-news.yml"]
   workflow_dispatch:
 
 permissions: {}
@@ -19,7 +16,6 @@ jobs:
     steps:
       - name: Validate Marketaux access and cutoff news coverage
         env:
-          NEWS_PROBE_SCOPE: global_macro
           MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
         shell: bash
         run: |
