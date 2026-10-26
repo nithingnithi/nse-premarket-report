@@ -1,6 +1,9 @@
 name: Test Upstox futures and flows
 
 "on":
+  push:
+    branches: ["codex/flow-date-diagnostics"]
+    paths: [".github/workflows/test-upstox-futures-flows.yml"]
   workflow_dispatch:
 
 permissions: {}
@@ -417,6 +420,66 @@ jobs:
                       "units": "Raw provider amounts. Docs label INR; no crore conversion or scoring until independently reconciled."}
           
           
+          def flow_coverage(records, dates):
+              """Expose validated dates/timestamps only, including when coverage fails."""
+              available = sorted(records, reverse=True)
+              return {"required_dates": dates, "available_dates_IST": available,
+                      "missing_dates": [date for date in dates if date not in records],
+                      "record_count": len(records),
+                      "latest_record_date": available[0] if available else None,
+                      "timestamp_samples": [{"date_IST": date,
+                                             "provider_time_stamp_ms": records[date]["time_stamp"],
+                                             "provider_time_IST": epoch(records[date]["time_stamp"]).isoformat()}
+                                            for date in available[:5]]}
+          
+          
+          def flow_check(api, path, segment, dates, now, validate):
+              """Try bounded, documented query forms; never merge response snapshots.
+          
+              `from` is optional. The official examples omit it and request individual
+              segments. Explicit oldest/latest required dates are additional diagnostic
+              anchors, not an assumption about undocumented date-range semantics.
+              """
+              methods = [("single_segment_default_range", None),
+                         ("single_segment_from_oldest_required", min(dates)),
+                         ("single_segment_from_latest_required", max(dates))]
+              attempts, prior = [], []
+              fields = (("total_long_contracts", "total_short_contracts")
+                        if segment == "NSE_FO|INDEX_FUTURES" else ("buy_amount", "sell_amount"))
+              for method, start in methods:
+                  if api.auth_failed:
+                      break
+                  evidence = {"method": method, "segment": segment, "interval": "1D"}
+                  if start is not None:
+                      evidence["from"] = start
+                  params = {"data_type": segment, "interval": "1D"}
+                  if start is not None:
+                      params["from"] = start
+                  try:
+                      records = dated_records(api.get(path, params), segment, now)
+                      evidence.update(flow_coverage(records, dates))
+                      # Validate comparable values, rather than silently preferring a
+                      # complete response that contradicts an earlier partial snapshot.
+                      current = {date: tuple(require_number(records[date].get(field)) for field in fields)
+                                 for date in dates if date in records}
+                      if any(old[date] != current[date] for old in prior for date in old.keys() & current.keys()):
+                          evidence["status"] = "CONFLICT"
+                          attempts.append(evidence)
+                          return {"status": "FAIL", "reason": "Institutional responses disagree on required-session values; no snapshots were merged.",
+                                  "method_attempts": attempts}
+                      prior.append(current)
+                      result = validate(records, dates)
+                      evidence["status"] = "PASS"
+                      attempts.append(evidence)
+                      return {**result, "selected_method": method, "method_attempts": attempts,
+                              "timestamp_scope": "Provider record timestamp converted to IST; independent exchange-session reconciliation remains pending."}
+                  except CheckFailure as exc:
+                      evidence.update({"status": "FAIL", "reason": str(exc)})
+                      attempts.append(evidence)
+              return {"status": "FAIL", "reason": "No documented query form returned valid data for every required completed session.",
+                      "required_dates": dates, "method_attempts": attempts}
+          
+          
           def attempt(results, label, run):
               try:
                   result = run()
@@ -444,19 +507,15 @@ jobs:
               if api.auth_failed:
                   results.append({"check": "Institutional flows", "status": "SKIPPED", "reason": "Earlier request was rejected."})
                   return results
-              start = min(dates["NSE"][-1], dates["NFO"][-1])
-              try:
-                  fii = api.get("/market/fii", {"data_type": "NSE_FO|INDEX_FUTURES,NSE_EQ|CASH", "interval": "1D", "from": start})
-                  attempt(results, "FII index-futures positions", lambda: position_check(dated_records(fii, "NSE_FO|INDEX_FUTURES", now), dates["NFO"]))
-                  attempt(results, "FII cash", lambda: cash_check(dated_records(fii, "NSE_EQ|CASH", now), dates["NSE"]))
-              except CheckFailure as exc:
-                  results.append({"check": "FII data", "status": "FAIL", "reason": str(exc)})
-              if not api.auth_failed:
-                  try:
-                      dii = api.get("/market/dii", {"data_type": "NSE_EQ|CASH", "interval": "1D", "from": start})
-                      attempt(results, "DII cash", lambda: cash_check(dated_records(dii, "NSE_EQ|CASH", now), dates["NSE"]))
-                  except CheckFailure as exc:
-                      results.append({"check": "DII cash", "status": "FAIL", "reason": str(exc)})
+              for label, path, segment, required, validate in (
+                  ("FII index-futures positions", "/market/fii", "NSE_FO|INDEX_FUTURES", dates["NFO"], position_check),
+                  ("FII cash", "/market/fii", "NSE_EQ|CASH", dates["NSE"], cash_check),
+                  ("DII cash", "/market/dii", "NSE_EQ|CASH", dates["NSE"], cash_check),
+              ):
+                  if api.auth_failed:
+                      results.append({"check": label, "status": "SKIPPED", "reason": "Earlier request was rejected."})
+                      continue
+                  attempt(results, label, lambda: flow_check(api, path, segment, required, now, validate))
               return results
           
           
@@ -475,6 +534,7 @@ jobs:
                             "Current-day daily candles are used only after the provider's published session end. Candle timestamps mark bar starts, not quote freshness.",
                             "OI counts and cash amounts are preserved in provider units. No inferred lot conversion, crore conversion, signal score, bias or DII-offset rule is applied.",
                             "If a required completed session is absent, the check fails rather than substituting zero or an older day.",
+                            "Flow requests try single segments with the default date range, then explicit oldest/latest required start dates. Each attempt reports returned and missing dates; one complete response must pass on its own. No timestamp shifts or cross-response row merging are applied.",
                             "Provider documentation: https://upstox.com/developer/api-documentation/", ""])
               return "\n".join(lines)
           
