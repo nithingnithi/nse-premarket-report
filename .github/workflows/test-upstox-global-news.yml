@@ -113,11 +113,13 @@ jobs:
                   self.opener = urllib.request.build_opener(NoRedirect())
           
               def get(self, path, params, envelope=False, version="v2"):
+                  indicator_path = re.fullmatch(r"/historical-candle/intraday/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1", path)
+                  indicator_history = re.fullmatch(r"/historical-candle/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
                   if not ((version == "v2" and path in PATHS)
-                          or (version == "v3" and path in ("/market-quote/quotes", "/market-quote/ltp"))):
+                          or (version == "v3" and (path in ("/market-quote/quotes", "/market-quote/ltp") or indicator_path or indicator_history))):
                       raise CheckFailure("Request path is outside the read-only test allowlist.")
                   request = urllib.request.Request(
-                      "https://api.upstox.com/" + version + path + "?" + urllib.parse.urlencode(params),
+                      "https://api.upstox.com/" + version + path + ("?" + urllib.parse.urlencode(params) if params else ""),
                       headers={"Accept": "application/json", "Authorization": "Bearer " + self.token,
                                "User-Agent": CLIENT_IDENTITY},
                       method="GET",
@@ -129,6 +131,7 @@ jobs:
                               raise CheckFailure("Probe time budget exhausted.")
                           with self.opener.open(request, timeout=min(15, remaining)) as response:
                               raw = response.read(4_000_001)
+                          self.last_response_at = dt.datetime.now(IST)
                           if len(raw) > 4_000_000:
                               raise CheckFailure("Response exceeded the size limit.")
                           payload = json.loads(raw)
@@ -281,7 +284,9 @@ jobs:
                   try:
                       data = batch if batch is not None and version == "v2" else api.get(
                           path, {"instrument_key": instrument["instrument_key"]}, version=version)
-                      result = global_quote(data, instrument, now)
+                      observed_at = getattr(api, "last_response_at", now)
+                      result = global_quote(data, instrument, observed_at)
+                      result["observed_at_IST"] = observed_at.isoformat()
                       result["selected_method"] = method
                       if method == "v3_ltp":
                           # LTP's documented cp is the previous close. Its schema does
@@ -301,6 +306,57 @@ jobs:
                   return {**best, "method_attempts": attempts}
               return {"status": "FAIL", **instrument, "method_attempts": attempts,
                       "reason": "No documented quote method returned a validated positive price for this published key."}
+          
+          
+          def indicator_candles(data, instrument, now):
+              if not isinstance(data, dict) or not isinstance(data.get("candles"), list) or not data["candles"]:
+                  raise CheckFailure("Indicator candle array is absent or empty.")
+              seen, closed = set(), []
+              for row in data["candles"]:
+                  if not isinstance(row, list) or len(row) < 7:
+                      raise CheckFailure("Indicator candle does not contain the documented OHLCV/OI fields.")
+                  stamp = timestamp(row[0], now)
+                  if not stamp or stamp in seen:
+                      raise CheckFailure("Indicator bar start is missing, ambiguous or duplicated.")
+                  seen.add(stamp)
+                  if (not all(number(value, True) for value in row[1:5])
+                          or not all(number(value) for value in row[5:7])
+                          or not row[3] <= min(row[1], row[4]) <= max(row[1], row[4]) <= row[2]):
+                      raise CheckFailure("Indicator candle prices, OHLC ordering or volume/OI fields are invalid.")
+                  start = dt.datetime.fromisoformat(stamp)
+                  end = start + dt.timedelta(minutes=1)
+                  if end <= now:
+                      closed.append((start, end, row[4]))
+              if not closed:
+                  raise CheckFailure("No fully elapsed one-minute indicator bar is available.")
+              start, end, close = max(closed, key=lambda item: item[0])
+              return {"status": "PASS", **instrument, "last_closed_minute_price": close,
+                      "bar_start_IST": start.isoformat(), "bar_end_IST": end.isoformat(), "bar_interval_seconds": 60,
+                      "bar_end_age_seconds": round((now - end).total_seconds(), 1),
+                      "freshness": "UNVERIFIED: candle timestamp marks the bar start, not an independent last-trade timestamp.",
+                      "identity_note": "Identity is bound to the requested provider key; candle responses do not repeat the instrument key. Benchmark construction and units remain unverified."}
+          
+          
+          def indicator_check(api, instrument, now):
+              key = urllib.parse.quote(instrument["instrument_key"], safe="")
+              today, first = now.date().isoformat(), (now.date() - dt.timedelta(days=3)).isoformat()
+              methods = [("v3_intraday_minute_candles", "/historical-candle/intraday/" + key + "/minutes/1"),
+                         ("v3_historical_minute_candles", "/historical-candle/" + key + "/minutes/1/" + today + "/" + first)]
+              attempts = []
+              for method, path in methods:
+                  if api.auth_failed:
+                      break
+                  try:
+                      data = api.get(path, {}, version="v3")
+                      observed_at = getattr(api, "last_response_at", now)
+                      result = indicator_candles(data, instrument, observed_at)
+                      result["observed_at_IST"] = observed_at.isoformat()
+                      attempts.append({"method": method, "status": "PASS"})
+                      return {**result, "selected_method": method, "method_attempts": attempts}
+                  except CheckFailure as exc:
+                      attempts.append({"method": method, "status": "FAIL", "reason": str(exc)})
+              return {"status": "FAIL", **instrument, "method_attempts": attempts,
+                      "reason": "No documented indicator candle method returned valid elapsed bars."}
           
           
           def news_cutoff(now):
@@ -413,14 +469,18 @@ jobs:
                                   "source": GLOBAL_FILE, "permission_basis": "Provider-published instrument download and documented market-quote integration."})
                   quotes, batch_error = None, None
                   try:
-                      quotes = api.get("/market-quote/quotes", {"instrument_key": ",".join(selected[name]["instrument_key"] for name in TARGETS)})
+                      quotes = api.get("/market-quote/quotes", {"instrument_key": ",".join(
+                          selected[name]["instrument_key"] for name in TARGETS if selected[name]["segment"] == "GLOBAL_INDEX")})
                   except CheckFailure as exc:
                       batch_error = str(exc)
                   for name in TARGETS:
                       if api.auth_failed:
                           results.append({"check": name, "status": "SKIPPED", "reason": "Earlier request was rejected."})
                           continue
-                      attempt(results, name, lambda: global_quote_check(api, selected[name], now, quotes, batch_error))
+                      if selected[name]["segment"] == "GLOBAL_INDICATOR":
+                          attempt(results, name, lambda: indicator_check(api, selected[name], now))
+                      else:
+                          attempt(results, name, lambda: global_quote_check(api, selected[name], now, quotes, batch_error))
               except CheckFailure as exc:
                   results.append({"check": "Global data", "status": "FAIL", "reason": str(exc)})
               if api.auth_failed:
@@ -434,14 +494,15 @@ jobs:
           
           def summary(results, now):
               lines = ["## Upstox global quotes and news test", "", "Checked at: " + now.isoformat(), "",
-                       "| Check | Access/schema | Quote update IST | Last trade IST |", "| --- | --- | --- | --- |"]
+                       "| Check | Access/schema | Quote update IST | Last trade IST | Candle start IST |", "| --- | --- | --- | --- | --- |"]
               for row in results:
-                  fields = (row["check"], row["status"], row.get("quote_update_IST", "N/A"), row.get("last_trade_IST", "N/A"))
+                  fields = (row["check"], row["status"], row.get("quote_update_IST", "N/A"), row.get("last_trade_IST", "N/A"), row.get("bar_start_IST", "N/A"))
                   lines.append("| " + " | ".join(html.escape(str(item)).replace("|", "&#124;") for item in fields) + " |")
               lines.extend(["", "Validated observations and fixed diagnostics; credentials and raw API responses are hidden:", ""])
               lines.extend("- " + html.escape(json.dumps(row, ensure_ascii=True)) for row in results)
               lines.extend(["", "PASS is an access/schema result, not production readiness or independently VERIFIED market freshness.",
                             "Quote-update time and last-trade time are shown separately. Refresh intervals are provider metadata, not freshness guarantees. Global benchmark identity/units and market calendars need independent reconciliation.",
+                            "USD/INR, Brent and WTI use the documented indicator candle endpoints. Values are elapsed one-minute candle closes, not full quotes; bar times are not last-trade timestamps. Historical fallback bars may be old; their actual dates and ages stay visible.",
                             "News uses the latest elapsed 07:45 IST cutoff and the preceding 12 hours. An evening test therefore uses that morning's cutoff. The report schedule and 08:00 IST delivery are not enabled by this test.",
                             "Only two sample equities are queried for news. Broad market/macro news, paraphrased syndicated duplicates and an economic calendar remain incomplete. No market bias, score, causal narrative or Telegram message is produced.",
                             "Sources: https://upstox.com/developer/api-documentation/announcements/global-instruments/ and https://upstox.com/developer/api-documentation/get-news/", ""])
