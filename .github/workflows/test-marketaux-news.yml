@@ -50,8 +50,8 @@ jobs:
               ("India macro keywords", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
               ("Global macro keywords", {"search": '"Federal Reserve" | inflation | crude | tariff | Treasury | geopolitics'}),
           )
-          MAX_PAGES = 3
-          MAX_REQUESTS = 18  # Includes one transient retry per request; never an unlimited crawl.
+          MAX_PAGES = 40
+          MAX_REQUESTS = 70  # Includes transient retries; leave headroom under 100/day.
           
           
           class CheckFailure(Exception):
@@ -84,6 +84,7 @@ jobs:
                   for attempt in range(2):
                       remaining = self.deadline - time.monotonic()
                       if self.stopped or remaining <= 0 or self.requests >= MAX_REQUESTS:
+                          self.stopped = True
                           raise CheckFailure("The probe stopped at its bounded request/time budget.")
                       self.requests += 1
                       try:
