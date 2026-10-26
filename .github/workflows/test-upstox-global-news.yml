@@ -112,11 +112,12 @@ jobs:
                   self.deadline = time.monotonic() + 300
                   self.opener = urllib.request.build_opener(NoRedirect())
           
-              def get(self, path, params, envelope=False):
-                  if path not in PATHS:
+              def get(self, path, params, envelope=False, version="v2"):
+                  if not ((version == "v2" and path in PATHS)
+                          or (version == "v3" and path in ("/market-quote/quotes", "/market-quote/ltp"))):
                       raise CheckFailure("Request path is outside the read-only test allowlist.")
                   request = urllib.request.Request(
-                      "https://api.upstox.com/v2" + path + "?" + urllib.parse.urlencode(params),
+                      "https://api.upstox.com/" + version + path + "?" + urllib.parse.urlencode(params),
                       headers={"Accept": "application/json", "Authorization": "Bearer " + self.token,
                                "User-Agent": CLIENT_IDENTITY},
                       method="GET",
@@ -268,6 +269,40 @@ jobs:
                       "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled."}
           
           
+          def global_quote_check(api, instrument, now, batch=None, batch_error=None):
+              attempts, best = [], None
+              if batch_error:
+                  attempts.append({"method": "v2_batch_full_quote", "status": "FAIL", "reason": batch_error})
+              methods = [("v2", "/market-quote/quotes"), ("v3", "/market-quote/quotes"), ("v3", "/market-quote/ltp")]
+              for version, path in methods:
+                  if api.auth_failed:
+                      break
+                  method = version + ("_ltp" if path.endswith("/ltp") else "_full_quote")
+                  try:
+                      data = batch if batch is not None and version == "v2" else api.get(
+                          path, {"instrument_key": instrument["instrument_key"]}, version=version)
+                      result = global_quote(data, instrument, now)
+                      result["selected_method"] = method
+                      if method == "v3_ltp":
+                          # LTP's documented cp is the previous close. Its schema does
+                          # not document quote/trade timestamps, so it cannot prove freshness.
+                          row = next(row for row in data.values() if isinstance(row, dict)
+                                     and row.get("instrument_token") == instrument["instrument_key"])
+                          result["previous_close_raw"] = row.get("cp") if number(row.get("cp"), True) else None
+                          result["status"] = "PARTIAL"
+                      attempts.append({"method": method, "status": result["status"]})
+                      if result["status"] == "PASS":
+                          return {**result, "method_attempts": attempts}
+                      if best is None:
+                          best = result
+                  except CheckFailure as exc:
+                      attempts.append({"method": method, "status": "FAIL", "reason": str(exc)})
+              if best:
+                  return {**best, "method_attempts": attempts}
+              return {"status": "FAIL", **instrument, "method_attempts": attempts,
+                      "reason": "No documented quote method returned a validated positive price for this published key."}
+          
+          
           def news_cutoff(now):
               cutoff = now.astimezone(IST).replace(hour=7, minute=45, second=0, microsecond=0)
               if cutoff > now:
@@ -376,9 +411,16 @@ jobs:
                   selected = instruments(global_file())
                   results.append({"check": "Global instrument file", "status": "PASS", "selected_instruments": len(selected),
                                   "source": GLOBAL_FILE, "permission_basis": "Provider-published instrument download and documented market-quote integration."})
-                  quotes = api.get("/market-quote/quotes", {"instrument_key": ",".join(selected[name]["instrument_key"] for name in TARGETS)})
+                  quotes, batch_error = None, None
+                  try:
+                      quotes = api.get("/market-quote/quotes", {"instrument_key": ",".join(selected[name]["instrument_key"] for name in TARGETS)})
+                  except CheckFailure as exc:
+                      batch_error = str(exc)
                   for name in TARGETS:
-                      attempt(results, name, lambda: global_quote(quotes, selected[name], now))
+                      if api.auth_failed:
+                          results.append({"check": name, "status": "SKIPPED", "reason": "Earlier request was rejected."})
+                          continue
+                      attempt(results, name, lambda: global_quote_check(api, selected[name], now, quotes, batch_error))
               except CheckFailure as exc:
                   results.append({"check": "Global data", "status": "FAIL", "reason": str(exc)})
               if api.auth_failed:
