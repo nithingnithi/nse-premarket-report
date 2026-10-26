@@ -1,0 +1,94 @@
+name: Set up Telegram
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: setup-telegram
+  cancel-in-progress: false
+
+jobs:
+  identify-chat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Verify bot and identify the private chat
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          EXPECTED_BOT: NSEMorningReportbot
+          PAIRING_CODE: nse_setup_d66ebba502346dee
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import time
+          import urllib.request
+
+          def stop(message):
+              raise SystemExit(message)
+
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
+              stop("TELEGRAM_BOT_TOKEN is missing or malformed. Check the repository secret.")
+
+          def api(method):
+              # Do not print URLs, exceptions, or API responses: URLs contain the token.
+              request = urllib.request.Request(
+                  "https://api.telegram.org/bot" + token + "/" + method,
+                  data=b"{}",
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      payload = json.load(response)
+              except Exception:
+                  stop("Telegram request failed. Check the secret and retry; details are suppressed to protect credentials.")
+              if not isinstance(payload, dict) or payload.get("ok") is not True:
+                  stop("Telegram rejected a request; response details are suppressed.")
+              return payload.get("result")
+
+          bot = api("getMe")
+          if not isinstance(bot, dict) or bot.get("username", "").lower() != os.environ["EXPECTED_BOT"].lower():
+              stop("The saved token does not belong to the expected bot.")
+          webhook = api("getWebhookInfo")
+          if not isinstance(webhook, dict) or webhook.get("url") != "":
+              stop("Webhook state is incompatible with setup. Existing settings were not changed.")
+          updates = api("getUpdates")
+          if not isinstance(updates, list):
+              stop("Telegram returned an unexpected update schema.")
+
+          expected_text = "/start " + os.environ["PAIRING_CODE"]
+          now = time.time()
+          chat_ids = set()
+          for update in updates:
+              message = update.get("message") if isinstance(update, dict) else None
+              if not isinstance(message, dict):
+                  continue
+              chat = message.get("chat")
+              sender = message.get("from")
+              sent_at = message.get("date")
+              if not isinstance(chat, dict) or not isinstance(sender, dict):
+                  continue
+              chat_id = chat.get("id")
+              if (message.get("text") == expected_text
+                      and chat.get("type") == "private"
+                      and type(chat_id) is int and chat_id > 0
+                      and sender.get("id") == chat_id and sender.get("is_bot") is False
+                      and type(sent_at) is int and 0 <= now - sent_at <= 3600):
+                  chat_ids.add(chat_id)
+          if len(chat_ids) != 1:
+              stop("No unique recent pairing message found. Send the setup command in your private bot chat and rerun. A backlog over 100 updates requires review.")
+
+          chat_id = next(iter(chat_ids))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Telegram setup verified\n\n")
+              summary.write("Bot: @NSEMorningReportbot\n\n")
+              summary.write(f"Private chat ID: `{chat_id}`\n\n")
+              summary.write("Save this number as the TELEGRAM_CHAT_ID repository secret in the next step.\n")
+          print("Bot and private chat verified. The chat ID is in this run summary.")
+          PY
