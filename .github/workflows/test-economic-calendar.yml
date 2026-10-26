@@ -1,0 +1,354 @@
+name: Test economic calendar sources
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: test-economic-calendar
+  cancel-in-progress: false
+
+jobs:
+  probe-calendar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Validate official calendar feeds and reviewed schedule expiry
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          """Public economic-calendar probe. No credentials, scoring, or delivery.
+          
+          Published BEA/BLS subscription formats are fetched directly. Reviewed schedules
+          are versioned facts from official pages/documents, not invented website APIs.
+          """
+          import datetime as dt
+          import hashlib
+          import html
+          import json
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.request
+          from zoneinfo import ZoneInfo
+          
+          IST = ZoneInfo("Asia/Kolkata")
+          UTC = dt.timezone.utc
+          SOURCES = {
+              "BEA JSON": "https://apps.bea.gov/API/signup/release_dates.json",
+              "BEA ICS": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+              "BLS ICS": "https://www.bls.gov/schedule/news_release/bls.ics",
+          }
+          MOSPI_PDF = "https://www.mospi.gov.in/uploads/documents/releaseCalender/1779709510470-ADVANCE%20RELEASE%20CALENDAR%202026-27%20Updated%2025.05.2026.pdf"
+          REVIEW = {"reviewed_on": "2026-10-26", "review_due_on": "2026-11-02", "coverage_through": "2026-11-09"}
+          # Date/time facts inspected from official sources on reviewed_on. They are not
+          # fixtures or claims of automatic source refresh. Missing times stay missing.
+          REVIEWED = [
+              {"agency": "MoSPI", "title": "All India Index of Industrial Production (IIP)", "date": "2026-10-28",
+               "source": MOSPI_PDF, "source_version": "Updated 25 May 2026, page 4",
+               "qualification": "Planned date only. The PDF moves holiday releases to the next working day and permits revisions. No release time or holiday adjustment is inferred."},
+              {"agency": "Federal Reserve", "title": "FOMC scheduled announcement", "local_time": "2026-10-28T14:00:00", "timezone": "America/New_York",
+               "source": "https://www.federalreserve.gov/newsevents/2026-october.htm", "meeting_start": "2026-10-27", "meeting_end": "2026-10-28"},
+              {"agency": "BLS", "title": "Employment Cost Index", "local_time": "2026-10-30T08:30:00", "timezone": "America/New_York",
+               "source": "https://www.bls.gov/schedule/2026/10_sched.htm"},
+              {"agency": "BLS", "title": "Job Openings and Labor Turnover Survey", "local_time": "2026-11-03T10:00:00", "timezone": "America/New_York",
+               "source": "https://www.bls.gov/schedule/2026/11_sched.htm"},
+              {"agency": "BLS", "title": "Productivity and Costs (preliminary)", "local_time": "2026-11-05T08:30:00", "timezone": "America/New_York",
+               "source": "https://www.bls.gov/schedule/2026/11_sched.htm"},
+              {"agency": "BLS", "title": "Employment Situation", "local_time": "2026-11-06T08:30:00", "timezone": "America/New_York",
+               "source": "https://www.bls.gov/schedule/2026/11_sched.htm"},
+              {"agency": "RBI", "title": "Monetary Policy Committee meeting", "date": "2026-12-02", "end_date": "2026-12-04",
+               "source": "https://www.rbi.org.in/Scripts/Annualpolicy.aspx", "source_version": "Meeting schedule for 2026-2027, published 23 March 2026",
+               "qualification": "Meeting date range only; announcement time is not established by this schedule."},
+          ]
+          
+          
+          class CheckFailure(Exception):
+              pass
+          
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          
+          def fetch(url):
+              if url not in SOURCES.values():
+                  raise CheckFailure("Calendar URL is outside the published-feed allowlist.")
+              request = urllib.request.Request(url, headers={"User-Agent": "NSEMorningReport/0.1 (personal read-only economic calendar)",
+                                                             "Accept": "application/json,text/calendar,text/plain"}, method="GET")
+              opener = urllib.request.build_opener(NoRedirect())
+              for attempt in range(2):
+                  try:
+                      with opener.open(request, timeout=15) as response:
+                          raw = response.read(2_000_001)
+                      if len(raw) > 2_000_000:
+                          raise CheckFailure("Calendar response exceeded the size limit.")
+                      return raw
+                  except urllib.error.HTTPError as exc:
+                      code = exc.code
+                      exc.close()
+                      if not attempt and (code == 429 or 500 <= code <= 599):
+                          time.sleep(2)
+                          continue
+                      raise CheckFailure("HTTP " + str(code) + ": published calendar download failed.") from None
+                  except (urllib.error.URLError, TimeoutError, OSError):
+                      if not attempt:
+                          time.sleep(2)
+                          continue
+                      raise CheckFailure("Network/TLS calendar request failed; verification was not bypassed.") from None
+          
+          
+          def aware(value):
+              if not isinstance(value, str):
+                  raise CheckFailure("A scheduled timestamp is missing.")
+              try:
+                  result = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+                  if result.tzinfo is None:
+                      raise CheckFailure("A scheduled timestamp has no timezone.")
+                  return result.astimezone(IST)
+              except ValueError:
+                  raise CheckFailure("A scheduled timestamp is malformed.") from None
+          
+          
+          def event(agency, title, source, stamp=None, date=None, **extra):
+              if not isinstance(title, str) or not title.strip() or len(title) > 1000:
+                  raise CheckFailure("Calendar title is missing or invalid.")
+              result = {"agency": agency, "title": title, "source": source,
+                        "date_IST": stamp.date().isoformat() if stamp else dt.date.fromisoformat(date).isoformat(),
+                        "scheduled_IST": stamp.isoformat() if stamp else None, "time_precision": "timestamp" if stamp else "date_only",
+                        "time_display_IST": stamp.strftime("%H:%M") if stamp else "N/A",
+                        "forecast": "N/A", "previous": "N/A", "actual": "N/A", **extra}
+              return result
+          
+          
+          def bea_json(raw):
+              try:
+                  payload = json.loads(raw)
+              except (ValueError, UnicodeError):
+                  raise CheckFailure("BEA response is not valid JSON.") from None
+              if not isinstance(payload, dict):
+                  raise CheckFailure("BEA JSON is not an object.")
+              rows, seen, duplicates = [], set(), 0
+              for title, item in payload.items():
+                  if title == "file_last_updated":
+                      continue
+                  if not isinstance(item, dict) or not isinstance(item.get("release_dates"), list):
+                      raise CheckFailure("BEA release_dates schema is invalid.")
+                  for value in item["release_dates"]:
+                      stamp = aware(value)
+                      identity = (title, stamp)
+                      if identity in seen:
+                          duplicates += 1
+                          continue
+                      seen.add(identity)
+                      rows.append(event("BEA", title, SOURCES["BEA JSON"], stamp))
+              if not rows:
+                  raise CheckFailure("BEA calendar has no dated releases.")
+              return rows, {"duplicates_removed": duplicates, "file_last_updated_raw": payload.get("file_last_updated"),
+                            "last_updated_timezone": "Unspecified in this field; not used as an independent freshness timestamp."}
+          
+          
+          def ics_events(raw, agency, source):
+              try:
+                  text = raw.decode("utf-8-sig")
+              except UnicodeError:
+                  raise CheckFailure("Calendar text encoding is invalid.") from None
+              if not text.startswith("BEGIN:VCALENDAR") or "END:VCALENDAR" not in text:
+                  raise CheckFailure("Response is not a complete iCalendar feed.")
+              lines = []
+              for line in text.replace("\r\n", "\n").splitlines():
+                  if line.startswith((" ", "\t")):
+                      if not lines:
+                          raise CheckFailure("Invalid folded calendar line.")
+                      lines[-1] += line[1:]
+                  else:
+                      lines.append(line)
+              records, fields = [], None
+              for line in lines:
+                  if line == "BEGIN:VEVENT":
+                      if fields is not None:
+                          raise CheckFailure("Nested calendar event is invalid.")
+                      fields = {}
+                  elif line == "END:VEVENT":
+                      if fields is None:
+                          raise CheckFailure("Unexpected calendar event boundary.")
+                      records.append(fields)
+                      fields = None
+                  elif fields is not None:
+                      left, separator, value = line.partition(":")
+                      if not separator:
+                          raise CheckFailure("Invalid calendar property.")
+                      name = left.split(";", 1)[0]
+                      if name in fields:
+                          raise CheckFailure("Ambiguous duplicate calendar property.")
+                      fields[name] = (left, value)
+              if fields is not None or not records:
+                  raise CheckFailure("Calendar has incomplete or absent events.")
+              rows, identities, duplicates, aliases = [], {}, 0, {}
+              for fields in records:
+                  if set(fields) & {"RRULE", "RDATE", "EXDATE", "RECURRENCE-ID"}:
+                      raise CheckFailure("Recurring or exception calendar entries need an explicit recurrence parser.")
+                  if "SUMMARY" not in fields or "DTSTART" not in fields:
+                      raise CheckFailure("Calendar event lacks a title or start.")
+                  title = re.sub(r"\\([nN,;\\])", lambda m: "\n" if m[1].lower() == "n" else m[1], fields["SUMMARY"][1])
+                  left, value = fields["DTSTART"]
+                  try:
+                      if ";VALUE=DATE" in left and ";VALUE=DATE-TIME" not in left:
+                          row = event(agency, title, source, date=dt.datetime.strptime(value, "%Y%m%d").date().isoformat())
+                      else:
+                          if value.endswith("Z"):
+                              stamp = dt.datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+                          else:
+                              match = re.search(r';TZID=(?:"([^"]+)"|([^;]+))', left)
+                              if not match:
+                                  raise CheckFailure("Floating calendar time has no explicit timezone.")
+                              zone_name = match[1] or match[2]
+                              # This exact custom TZID was observed in BLS's published
+                              # feed. BLS's linked release schedules explicitly state
+                              # Eastern Time. Bind the alias to that agency/source only;
+                              # keep IANA daylight-saving rules rather than fixing -05:00.
+                              if (agency == "BLS" and source == SOURCES["BLS ICS"] and zone_name == "US-Eastern"
+                                      and "TZID:US-Eastern" in lines):
+                                  aliases[zone_name] = "America/New_York"
+                                  zone_name = "America/New_York"
+                              zone = ZoneInfo(zone_name)
+                              stamp = dt.datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=zone)
+                              # Reject ambiguous/nonexistent wall times rather than guessing.
+                              alternate = stamp.replace(fold=1)
+                              if alternate.utcoffset() != stamp.utcoffset() or stamp.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != stamp.replace(tzinfo=None):
+                                  raise CheckFailure("Ambiguous or nonexistent calendar wall time.")
+                          row = event(agency, title, source, stamp.astimezone(IST))
+                  except (ValueError, KeyError):
+                      raise CheckFailure("Calendar start/timezone is invalid.") from None
+                  uid = fields.get("UID", (None, None))[1] or hashlib.sha256((title + value).encode()).hexdigest()
+                  signature = (row["title"], row["date_IST"], row["scheduled_IST"], fields.get("STATUS", (None, None))[1])
+                  if uid in identities:
+                      if identities[uid] != signature:
+                          raise CheckFailure("Conflicting calendar records share one event identity.")
+                      duplicates += 1
+                      continue
+                  identities[uid] = signature
+                  if fields.get("STATUS", (None, ""))[1] != "CANCELLED":
+                      rows.append(row)
+              return rows, {"duplicates_removed": duplicates, "documented_timezone_aliases": aliases}
+          
+          
+          def ics_schema_evidence(raw):
+              """Restricted calendar-property diagnostics, never a raw HTML/feed dump."""
+              text = raw.decode("utf-8-sig", errors="replace")
+              if not text.startswith("BEGIN:VCALENDAR"):
+                  return {"calendar_envelope": False}
+              fields = re.findall(r"^(?:DTSTART|TZID|X-WR-TIMEZONE)[^\r\n]{0,120}", text, re.M)
+              fields = [field for field in fields if re.fullmatch(r'[A-Za-z0-9_/=:;.,+" -]{1,140}', field)]
+              return {"calendar_envelope": True, "timezone_properties": sorted(set(f for f in fields if not f.startswith("DTSTART"))),
+                      "start_samples": [f for f in fields if f.startswith("DTSTART")][:4],
+                      "event_blocks": text.count("BEGIN:VEVENT")}
+          
+          
+          def reviewed_events(today):
+              reviewed = dt.date.fromisoformat(REVIEW["reviewed_on"])
+              due = dt.date.fromisoformat(REVIEW["review_due_on"])
+              through = dt.date.fromisoformat(REVIEW["coverage_through"])
+              if not reviewed <= today <= due or today + dt.timedelta(days=7) > through:
+                  raise CheckFailure("Reviewed schedule snapshot is stale, future-dated or outside its covered horizon; refresh official sources.")
+              rows = []
+              for item in REVIEWED:
+                  item = dict(item)
+                  local = item.pop("local_time", None)
+                  zone = item.pop("timezone", None)
+                  date = item.pop("date", None)
+                  agency, title, source = item.pop("agency"), item.pop("title"), item.pop("source")
+                  stamp = dt.datetime.fromisoformat(local).replace(tzinfo=ZoneInfo(zone)).astimezone(IST) if local else None
+                  rows.append(event(agency, title, source, stamp, date, **item,
+                                    provenance="Reviewed official schedule snapshot; automatic revision discovery is not implemented.", **REVIEW))
+              return rows
+          
+          
+          def in_window(row, cutoff, days=7):
+              if row["scheduled_IST"] is not None:
+                  return cutoff <= aware(row["scheduled_IST"]) < cutoff + dt.timedelta(days=days)
+              date = dt.date.fromisoformat(row["date_IST"])
+              return cutoff.date() <= date <= (cutoff + dt.timedelta(days=days)).date()
+          
+          
+          def reconcile_bea(json_rows, ics_rows, cutoff):
+              comparison, mismatch = [], []
+              for canonical in ("Gross Domestic Product", "Personal Income and Outlays"):
+                  expected = {r["scheduled_IST"] for r in json_rows if r["title"] == canonical and in_window(r, cutoff)}
+                  # The official ICS uses GDP (Advance Estimate), while JSON uses the
+                  # expanded name. Do not accidentally include GDP by State/County.
+                  def matches(title):
+                      return (title == canonical or title.startswith(canonical + ",")
+                              or canonical == "Gross Domestic Product" and title.startswith("GDP ("))
+                  matched = [r for r in ics_rows if matches(r["title"]) and in_window(r, cutoff)]
+                  observed = {r["scheduled_IST"] for r in matched}
+                  comparison.append({"series": canonical, "json_times_IST": sorted(expected), "ics_times_IST": sorted(observed),
+                                     "matched_ics_titles": sorted({r["title"] for r in matched})})
+                  if expected != observed:
+                      mismatch.append(canonical)
+              return {"check": "BEA format reconciliation", "status": "FAIL" if mismatch else "PASS",
+                      "mismatched_series": mismatch, "comparison": comparison}
+          
+          
+          def run(now):
+              cutoff = now.replace(hour=7, minute=45, second=0, microsecond=0)
+              if cutoff > now:
+                  cutoff -= dt.timedelta(days=1)
+              results, events, parsed = [], [], {}
+              for agency in SOURCES:
+                  diagnostics = None
+                  try:
+                      raw = fetch(SOURCES[agency])
+                      if agency.endswith("ICS"):
+                          diagnostics = ics_schema_evidence(raw)
+                      rows, extra = bea_json(raw) if agency == "BEA JSON" else ics_events(raw, agency.split()[0], SOURCES[agency])
+                      latest = max((row["date_IST"] for row in rows), default=None)
+                      if latest is None or latest < (cutoff + dt.timedelta(days=7)).date().isoformat():
+                          raise CheckFailure("Calendar does not cover the next seven days; an empty upcoming list cannot establish no events.")
+                      parsed[agency] = rows
+                      upcoming = [row for row in rows if in_window(row, cutoff)]
+                      results.append({"check": agency, "status": "PASS", "records": len(rows), "latest_date": latest,
+                                      "upcoming_selected": len(upcoming), "source": SOURCES[agency], **extra})
+                      if agency in ("BEA JSON", "BLS ICS"):
+                          events.extend(upcoming)
+                  except CheckFailure as exc:
+                      results.append({"check": agency, "status": "BLOCKED" if str(exc).startswith("HTTP 403") else "FAIL", "reason": str(exc),
+                                      "schema_evidence": diagnostics})
+                  except Exception:
+                      results.append({"check": agency, "status": "FAIL", "reason": "Unexpected calendar schema; no completeness claim made."})
+              try:
+                  reviewed = reviewed_events(now.date())
+                  events.extend(row for row in reviewed if in_window(row, cutoff) and (row["agency"] != "BLS" or "BLS ICS" not in parsed))
+                  results.append({"check": "Reviewed schedules", "status": "PASS", "scope": "Selected MoSPI, RBI, Federal Reserve and BLS events; source revisions are not fetched automatically.", **REVIEW})
+              except CheckFailure as exc:
+                  results.append({"check": "Reviewed schedules", "status": "FAIL", "reason": str(exc)})
+              # Cross-check the two separately published BEA formats for GDP and PCE-related
+              # release times, rather than trusting a reachable but stale subscription file.
+              if "BEA JSON" in parsed and "BEA ICS" in parsed:
+                  results.append(reconcile_bea(parsed["BEA JSON"], parsed["BEA ICS"], cutoff))
+              unique = {(row["agency"], row["title"], row["date_IST"], row["scheduled_IST"]): row for row in events}
+              bad = any(row["status"] != "PASS" for row in results)
+              return {"checked_at_IST": now.isoformat(), "cutoff_IST": cutoff.isoformat(), "horizon_days": 7,
+                      "checks": results, "access_validation": "PARTIAL" if bad else "PASS", "calendar_coverage": "PARTIAL",
+                      "events": sorted(unique.values(), key=lambda row: (row["date_IST"], row["scheduled_IST"] or "", row["title"])),
+                      "limitations": "Selected sources/events only. Reviewed snapshots require renewal; date-only events are planned dates with time N/A. Forecast, previous and actual values are unavailable. Calendar alerts do not change the six signals or final bias."}
+          
+          
+          def main():
+              try:
+                  report = run(dt.datetime.now(IST))
+              except Exception:
+                  report = {"access_validation": "FAIL", "calendar_coverage": "UNVERIFIED", "reason": "Calendar probe failed; no missing values were converted to zero."}
+              print(json.dumps(report, ensure_ascii=True))
+              if os.environ.get("GITHUB_STEP_SUMMARY"):
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+                      stream.write("## Economic calendar source test\n\nAccess validation: " + report["access_validation"] + "\n\nCalendar coverage: " + report["calendar_coverage"] + "\n\n" + html.escape(json.dumps(report, ensure_ascii=True)) + "\n")
+              return 0 if report["access_validation"] == "PASS" else 1
+          
+          
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
