@@ -230,6 +230,18 @@ jobs:
               return rows, {"duplicates_removed": duplicates}
           
           
+          def ics_schema_evidence(raw):
+              """Restricted calendar-property diagnostics, never a raw HTML/feed dump."""
+              text = raw.decode("utf-8-sig", errors="replace")
+              if not text.startswith("BEGIN:VCALENDAR"):
+                  return {"calendar_envelope": False}
+              fields = re.findall(r"^(?:DTSTART|TZID|X-WR-TIMEZONE)[^\r\n]{0,120}", text, re.M)
+              fields = [field for field in fields if re.fullmatch(r'[A-Za-z0-9_/=:;.,+" -]{1,140}', field)]
+              return {"calendar_envelope": True, "timezone_properties": sorted(set(f for f in fields if not f.startswith("DTSTART"))),
+                      "start_samples": [f for f in fields if f.startswith("DTSTART")][:4],
+                      "event_blocks": text.count("BEGIN:VEVENT")}
+          
+          
           def reviewed_events(today):
               reviewed = dt.date.fromisoformat(REVIEW["reviewed_on"])
               due = dt.date.fromisoformat(REVIEW["review_due_on"])
@@ -262,8 +274,11 @@ jobs:
                   cutoff -= dt.timedelta(days=1)
               results, events, parsed = [], [], {}
               for agency in SOURCES:
+                  diagnostics = None
                   try:
                       raw = fetch(SOURCES[agency])
+                      if agency.endswith("ICS"):
+                          diagnostics = ics_schema_evidence(raw)
                       rows, extra = bea_json(raw) if agency == "BEA JSON" else ics_events(raw, agency.split()[0], SOURCES[agency])
                       latest = max((row["date_IST"] for row in rows), default=None)
                       if latest is None or latest < (cutoff + dt.timedelta(days=7)).date().isoformat():
@@ -275,7 +290,8 @@ jobs:
                       if agency in ("BEA JSON", "BLS ICS"):
                           events.extend(upcoming)
                   except CheckFailure as exc:
-                      results.append({"check": agency, "status": "BLOCKED" if str(exc).startswith("HTTP 403") else "FAIL", "reason": str(exc)})
+                      results.append({"check": agency, "status": "BLOCKED" if str(exc).startswith("HTTP 403") else "FAIL", "reason": str(exc),
+                                      "schema_evidence": diagnostics})
                   except Exception:
                       results.append({"check": agency, "status": "FAIL", "reason": "Unexpected calendar schema; no completeness claim made."})
               try:
