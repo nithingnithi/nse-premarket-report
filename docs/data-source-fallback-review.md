@@ -2,6 +2,18 @@
 
 Reviewed on 2026-10-26 for this personal, noncommercial pre-market report.
 
+## Session diagnostic update — 26 October 2026
+
+**Status: not ready for unattended use.** No further unchanged workflow rerun is needed.
+
+- Confirmed: updated GitHub [run 40343842773](https://github.com/nithingnithi/nse-premarket-report/actions/runs/40343842773), job 121645385604, also failed. Bhavcopy failed at `tools/call` in both attempts. CM Market failed at `tools/call` once and `notifications/initialized` once. Initialization therefore succeeded; the 404s occurred later in the session.
+- Confirmed: a local run of the same probe reproduced the intermittent failures. Bhavcopy succeeded on its second attempt; CM Market failed both attempts. This is not exclusively a GitHub-runner problem.
+- Confirmed: installed the official MCP Python SDK 2.3.0 in an isolated task-local virtual environment and made a bounded live comparison. Both services returned HTTP 200 and assigned a session during initialization, then returned HTTP 404 to subsequent requests carrying that session. The SDK run failed overall for both services; no validated data samples completed. The CM `tools/call` HTTP response was 200, but the following `tools/list` schema request failed with 404. A single successful HTTP response is not a successful end-to-end data check.
+- Possible risk: upstream session routing or session-lifetime behavior may be involved. The exact root cause is unverified; these results do not establish that the endpoint URLs are missing, that NSE blocks GitHub, or that the custom client alone caused the failures.
+- Local evidence: `outputs/nse-mcp-sdk-comparison-2026-10-26.json`. The HTTP trace records method, status and session-presence booleans, never session identifiers. TLS verification remained enabled. No SDK dependency was added to the GitHub workflow.
+
+Next: retain these MCPs for interactive research with per-request validation; require a reliable, tested source before scheduling the report. Upstox reactivation remains pending, and the nselib fallback remains unevaluated for permitted unattended access. Calculations and PDF work can proceed separately with clearly labelled missing data and synthetic fixtures.
+
 ## Confirmed observations
 
 - Both NSE MCPs returned data through the connected Codex plugins. Captured India VIX values were 17.16 in the dated bhavcopy and 17.15 in the last-published cash-market snapshot. The difference is unresolved.
