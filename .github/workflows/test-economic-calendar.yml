@@ -190,7 +190,7 @@ jobs:
                       fields[name] = (left, value)
               if fields is not None or not records:
                   raise CheckFailure("Calendar has incomplete or absent events.")
-              rows, identities, duplicates = [], {}, 0
+              rows, identities, duplicates, aliases = [], {}, 0, {}
               for fields in records:
                   if set(fields) & {"RRULE", "RDATE", "EXDATE", "RECURRENCE-ID"}:
                       raise CheckFailure("Recurring or exception calendar entries need an explicit recurrence parser.")
@@ -208,7 +208,16 @@ jobs:
                               match = re.search(r';TZID=(?:"([^"]+)"|([^;]+))', left)
                               if not match:
                                   raise CheckFailure("Floating calendar time has no explicit timezone.")
-                              zone = ZoneInfo(match[1] or match[2])
+                              zone_name = match[1] or match[2]
+                              # This exact custom TZID was observed in BLS's published
+                              # feed. BLS's linked release schedules explicitly state
+                              # Eastern Time. Bind the alias to that agency/source only;
+                              # keep IANA daylight-saving rules rather than fixing -05:00.
+                              if (agency == "BLS" and source == SOURCES["BLS ICS"] and zone_name == "US-Eastern"
+                                      and "TZID:US-Eastern" in lines):
+                                  aliases[zone_name] = "America/New_York"
+                                  zone_name = "America/New_York"
+                              zone = ZoneInfo(zone_name)
                               stamp = dt.datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=zone)
                               # Reject ambiguous/nonexistent wall times rather than guessing.
                               alternate = stamp.replace(fold=1)
@@ -227,7 +236,7 @@ jobs:
                   identities[uid] = signature
                   if fields.get("STATUS", (None, ""))[1] != "CANCELLED":
                       rows.append(row)
-              return rows, {"duplicates_removed": duplicates}
+              return rows, {"duplicates_removed": duplicates, "documented_timezone_aliases": aliases}
           
           
           def ics_schema_evidence(raw):
@@ -268,6 +277,25 @@ jobs:
               return cutoff.date() <= date <= (cutoff + dt.timedelta(days=days)).date()
           
           
+          def reconcile_bea(json_rows, ics_rows, cutoff):
+              comparison, mismatch = [], []
+              for canonical in ("Gross Domestic Product", "Personal Income and Outlays"):
+                  expected = {r["scheduled_IST"] for r in json_rows if r["title"] == canonical and in_window(r, cutoff)}
+                  # The official ICS uses GDP (Advance Estimate), while JSON uses the
+                  # expanded name. Do not accidentally include GDP by State/County.
+                  def matches(title):
+                      return (title == canonical or title.startswith(canonical + ",")
+                              or canonical == "Gross Domestic Product" and title.startswith("GDP ("))
+                  matched = [r for r in ics_rows if matches(r["title"]) and in_window(r, cutoff)]
+                  observed = {r["scheduled_IST"] for r in matched}
+                  comparison.append({"series": canonical, "json_times_IST": sorted(expected), "ics_times_IST": sorted(observed),
+                                     "matched_ics_titles": sorted({r["title"] for r in matched})})
+                  if expected != observed:
+                      mismatch.append(canonical)
+              return {"check": "BEA format reconciliation", "status": "FAIL" if mismatch else "PASS",
+                      "mismatched_series": mismatch, "comparison": comparison}
+          
+          
           def run(now):
               cutoff = now.replace(hour=7, minute=45, second=0, microsecond=0)
               if cutoff > now:
@@ -303,13 +331,7 @@ jobs:
               # Cross-check the two separately published BEA formats for GDP and PCE-related
               # release times, rather than trusting a reachable but stale subscription file.
               if "BEA JSON" in parsed and "BEA ICS" in parsed:
-                  mismatch = []
-                  for prefix in ("Gross Domestic Product", "Personal Income and Outlays"):
-                      expected = {r["scheduled_IST"] for r in parsed["BEA JSON"] if r["title"] == prefix and in_window(r, cutoff)}
-                      observed = {r["scheduled_IST"] for r in parsed["BEA ICS"] if (r["title"] == prefix or r["title"].startswith(prefix + ",")) and in_window(r, cutoff)}
-                      if expected != observed:
-                          mismatch.append(prefix)
-                  results.append({"check": "BEA format reconciliation", "status": "FAIL" if mismatch else "PASS", "mismatched_series": mismatch})
+                  results.append(reconcile_bea(parsed["BEA JSON"], parsed["BEA ICS"], cutoff))
               unique = {(row["agency"], row["title"], row["date_IST"], row["scheduled_IST"]): row for row in events}
               bad = any(row["status"] != "PASS" for row in results)
               return {"checked_at_IST": now.isoformat(), "cutoff_IST": cutoff.isoformat(), "horizon_days": 7,
