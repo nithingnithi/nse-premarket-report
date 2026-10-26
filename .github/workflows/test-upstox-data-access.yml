@@ -42,6 +42,7 @@ jobs:
           INDICES = {"Nifty": "NSE_INDEX|Nifty 50", "Bank Nifty": "NSE_INDEX|Nifty Bank",
                      "India VIX": "NSE_INDEX|India VIX"}
           PATHS = {"/market-quote/quotes", "/option/contract", "/option/chain"}
+          CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-data report)"
           
           
           class CheckFailure(Exception):
@@ -109,7 +110,8 @@ jobs:
                       raise CheckFailure("Request path is outside the read-only test allowlist.")
                   request = urllib.request.Request(
                       "https://api.upstox.com/v2" + path + "?" + urllib.parse.urlencode(params),
-                      headers={"Accept": "application/json", "Authorization": "Bearer " + self.token},
+                      headers={"Accept": "application/json", "Authorization": "Bearer " + self.token,
+                               "User-Agent": CLIENT_IDENTITY},
                       method="GET",
                   )
                   for attempt in range(2):
