@@ -1,9 +1,6 @@
 name: Test economic calendar sources
 
 "on":
-  push:
-    branches: ["codex/economic-calendar-access"]
-    paths: [".github/workflows/test-economic-calendar.yml"]
   workflow_dispatch:
 
 permissions: {}
