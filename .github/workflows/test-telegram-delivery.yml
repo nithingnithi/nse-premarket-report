@@ -1,0 +1,141 @@
+name: Test Telegram PDF delivery
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: test-telegram-pdf-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver-test-pdf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Upload the test PDF and verify its downloaded bytes
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.request
+          import uuid
+          
+          PDF_BASE64 = "JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUgo+PgplbmRvYmoKMiAwIG9iago8PAovQmFzZUZvbnQgL0hlbHZldGljYSAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjEgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iagozIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhLUJvbGQgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YyIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKNCAwIG9iago8PAovQ29udGVudHMgOCAwIFIgL01lZGlhQm94IFsgMCAwIDU5NS4yNzU2IDg0MS44ODk4IF0gL1BhcmVudCA3IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgNyAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0F1dGhvciAoTlNFIE1vcm5pbmcgUmVwb3J0KSAvQ3JlYXRpb25EYXRlIChEOjIwMDAwMTAxMDAwMDAwKzAwJzAwJykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMDAwMTAxMDAwMDAwKzAwJzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5zb3VyY2VcKSkgCiAgL1N1YmplY3QgKHVuc3BlY2lmaWVkKSAvVGl0bGUgKE5TRSBNb3JuaW5nIFJlcG9ydCAtIFRlbGVncmFtIGRlbGl2ZXJ5IHRlc3QpIC9UcmFwcGVkIC9GYWxzZQo+PgplbmRvYmoKNyAwIG9iago8PAovQ291bnQgMSAvS2lkcyBbIDQgMCBSIF0gL1R5cGUgL1BhZ2VzCj4+CmVuZG9iago4IDAgb2JqCjw8Ci9GaWx0ZXIgWyAvQVNDSUk4NURlY29kZSAvRmxhdGVEZWNvZGUgXSAvTGVuZ3RoIDkzMQo+PgpzdHJlYW0KR2F1MEFtbl9bbCZIMUojaV1fNm5SK1NbN1FxcTRlOVUtRztSXEI5ITlxN0IvYGxOLU0rbWs/Si0jJSdLIUU3WDo8KW9EMG4odW00SFVmNnBQSUJCNSRLK2hhN3FXTWFLLVVdRSQmQFJdVlRGSm9QIXJVVVRqLl5NIy9ZVSEjUiwqK1dVTm9lLiNESEgvc0lKMCZlXyxLXl90MygtNTh1amRQKSNaRSJ1MXFTIVZoZyRuLHVRS1M0NCZpLHVXLWArK1UmZllKbWJHXXUyM1RBPDJFRF10T28nPWJcN15PNlg3JW5JMiFwUS4vJUhYT2k0P2widCRIIW8jJTovI0FmOjlXVUBvRipLUigpdTlUK2hdXHJJNHJJPzEtcytZImhtW3NANSRiQXBoRik3PChqX1omKFolJCQobCgiKFgnNTheOUE+cztgPk1cS1pobSJLbE9tMC1AOCNiJUBbSUNOPz0hSW9UXEFsK3E7WGIqcWFRZC8qXSUtMlFbbmdVLDpmIVkzSSIlSDQsZFdtR1BlcSlzbihzPEAjOSxTZF5QKE8yMGc/X1RZQV4vJEZsMkw8O2hdN0JkN1VZLihRKUZVOVNjbVlxSWBXL11RPSJmVj1ONnViZ0QjdCwoOzk/Xk9JM1ZnLCYwSDByWVUyZCRAKlhoZVBgRWp1LEhVVFksSjw3LmlANjxpbWVyTlwiS2prPlsmW2dMZ2heTGJtciFVKjtWcy4zXFgzK3Q3QnMvW2NIXmoybj1uaEg8a1NQW3AyR1pldV9JTkgyN0grM006VUY+OGZCaFg/Q2tgJW4rP2c5ZWhfVFhBOXFoOi0/Yj5ILCdZNT5bWiZgc0dGOTc0VzVXREtMOVwxU05AbD9kZSlaQnQpcVIvOjhRNSdtTlNRXVlxQjAsUCY1QGpWJlx0U0RLaWlMOTAlNihXXkElPChHcDA7XCFkNlwoKzZSQD9qPSFBSCNOLWc+OTo4ND1XXlU+cTNFdS4zNmo7c2xFUkZEcT9BbkNiV1lvQjIzITs9Ni46akM+ZWVwKSI7XC8hamlzIjZGRjMnUUpgY0xkaGYiJDtMUyU4R2gxanJsP2NLbVBvPkU7Y1ghUF9kLV80WjJOOSJUT2BAaFtybUBocic0TS45UDEtZSldN2BbdTppQSRhLWZbPkYkVVEoTDRrZkRYK1ZeUyIpPFlAVCxabjIvRyduMWJXXF5fJV9fT1ErTEU8TmUkZ0VLdWwhTSldRyV+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDkKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAxMDIgMDAwMDAgbiAKMDAwMDAwMDIwOSAwMDAwMCBuIAowMDAwMDAwMzIxIDAwMDAwIG4gCjAwMDAwMDA1MjQgMDAwMDAgbiAKMDAwMDAwMDU5MiAwMDAwMCBuIAowMDAwMDAwODk3IDAwMDAwIG4gCjAwMDAwMDA5NTYgMDAwMDAgbiAKdHJhaWxlcgo8PAovSUQgCls8YmNmYzU5YjlkMzllN2Y1YjE3MzdjNzUwYTBmZjg0NzE+PGJjZmM1OWI5ZDM5ZTdmNWIxNzM3Yzc1MGEwZmY4NDcxPl0KJSBSZXBvcnRMYWIgZ2VuZXJhdGVkIFBERiBkb2N1bWVudCAtLSBkaWdlc3QgKG9wZW5zb3VyY2UpCgovSW5mbyA2IDAgUgovUm9vdCA1IDAgUgovU2l6ZSA5Cj4+CnN0YXJ0eHJlZgoxOTc3CiUlRU9GCg=="
+          PDF_SHA256 = "88569eea994732a713d6f1c19cfa62f44b27bac9f09ff42635dc06641f78dc16"
+          FILENAME = "nse-telegram-delivery-test.pdf"
+          
+          def stop(message):
+              raise SystemExit(message)
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          def main():
+              token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+              chat_text = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+              if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
+                  stop("TELEGRAM_BOT_TOKEN is missing or malformed.")
+              if not re.fullmatch(r"[1-9][0-9]*", chat_text):
+                  stop("TELEGRAM_CHAT_ID must contain your positive numeric private-chat ID.")
+              chat_id = int(chat_text)
+              pdf = base64.b64decode(PDF_BASE64, validate=True)
+              if not pdf.startswith(b"%PDF-") or hashlib.sha256(pdf).hexdigest() != PDF_SHA256:
+                  stop("The embedded test PDF failed its integrity check.")
+              opener = urllib.request.build_opener(NoRedirect())
+          
+              def api(method, parameters=None, body=None, content_type="application/json"):
+                  if body is None:
+                      body = json.dumps(parameters or {}).encode("utf-8")
+                  request = urllib.request.Request(
+                      "https://api.telegram.org/bot" + token + "/" + method,
+                      data=body, headers={"Content-Type": content_type}, method="POST",
+                  )
+                  try:
+                      with opener.open(request, timeout=30) as response:
+                          payload = json.load(response)
+                  except Exception:
+                      if method == "sendDocument":
+                          stop("Upload result is uncertain. Check Telegram before rerunning; no automatic retry was attempted.")
+                      stop("Telegram request failed. Sensitive URLs, responses and exception details are suppressed.")
+                  if not isinstance(payload, dict) or payload.get("ok") is not True:
+                      stop("Telegram rejected a request. Sensitive response details are suppressed.")
+                  return payload.get("result")
+          
+              bot = api("getMe")
+              if (not isinstance(bot, dict) or bot.get("is_bot") is not True
+                      or not isinstance(bot.get("username"), str)
+                      or bot["username"].lower() != "nsemorningreportbot"):
+                  stop("The saved token does not belong to @NSEMorningReportbot.")
+              chat = api("getChat", {"chat_id": chat_id})
+              if (not isinstance(chat, dict) or chat.get("type") != "private"
+                      or type(chat.get("id")) is not int or chat["id"] != chat_id):
+                  stop("The saved chat ID did not resolve to the expected private chat.")
+          
+              boundary = "nse_pdf_" + uuid.uuid4().hex
+              chunks = []
+              for name, value in [
+                  ("chat_id", chat_text),
+                  ("caption", "SETUP TEST ONLY - Please open this PDF and confirm that it is readable. No market data is included."),
+              ]:
+                  chunks.append((
+                      "--" + boundary + "\r\n"
+                      + 'Content-Disposition: form-data; name="' + name + '"\r\n\r\n'
+                      + value + "\r\n"
+                  ).encode("utf-8"))
+              chunks.append((
+                  "--" + boundary + "\r\n"
+                  + 'Content-Disposition: form-data; name="document"; filename="' + FILENAME + '"\r\n'
+                  + "Content-Type: application/pdf\r\n\r\n"
+              ).encode("ascii"))
+              chunks.extend([pdf, ("\r\n--" + boundary + "--\r\n").encode("ascii")])
+              sent = api("sendDocument", body=b"".join(chunks),
+                         content_type="multipart/form-data; boundary=" + boundary)
+              if not isinstance(sent, dict):
+                  stop("The PDF upload did not return a valid message. Check Telegram before rerunning.")
+              sent_chat = sent.get("chat")
+              document = sent.get("document")
+              if (not isinstance(sent_chat, dict) or sent_chat.get("id") != chat_id
+                      or sent_chat.get("type") != "private"
+                      or not isinstance(document, dict)
+                      or not isinstance(document.get("file_id"), str) or not document["file_id"]
+                      or type(sent.get("message_id")) is not int or sent["message_id"] <= 0):
+                  stop("The upload response did not confirm a document in the expected private chat. Check Telegram before rerunning.")
+          
+              file = api("getFile", {"file_id": document["file_id"]})
+              path = file.get("file_path") if isinstance(file, dict) else None
+              if (not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_./-]+", path)
+                      or path.startswith("/") or ".." in path.split("/")):
+                  stop("Telegram accepted the upload but file verification could not proceed. Check Telegram before rerunning.")
+              try:
+                  request = urllib.request.Request("https://api.telegram.org/file/bot" + token + "/" + path)
+                  with opener.open(request, timeout=30) as response:
+                      downloaded = response.read(len(pdf) + 1)
+              except Exception:
+                  stop("Telegram accepted the PDF but the verification download failed. Check Telegram before rerunning.")
+              if hashlib.sha256(downloaded).hexdigest() != PDF_SHA256:
+                  stop("Telegram accepted a document but the downloaded bytes did not match the test PDF.")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                  summary.write("## Telegram PDF delivery test passed\n\n")
+                  summary.write("Telegram accepted the PDF in the configured private chat.\n\n")
+                  summary.write("The downloaded copy matches the original PDF by SHA-256.\n\n")
+                  summary.write("Please open the file in Telegram and confirm readability. This does not yet test market data or scheduling.\n")
+              print("PDF upload and downloaded-file integrity verified. Confirm receipt and readability in Telegram.")
+          
+          if __name__ == "__main__":
+              try:
+                  main()
+              except SystemExit:
+                  raise
+              except Exception:
+                  stop("The delivery test failed. Sensitive error details are suppressed; check Telegram before rerunning.")
+          PY
