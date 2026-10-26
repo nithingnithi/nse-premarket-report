@@ -25,6 +25,7 @@ jobs:
           """
           import datetime as dt
           import html
+          import http.cookiejar
           import json
           import math
           import os
@@ -96,9 +97,13 @@ jobs:
           class Client:
               def __init__(self, url):
                   self.url, self.session, self.version, self.request_id = url, None, None, 0
-                  self.opener = urllib.request.build_opener(NoRedirect())
+                  self.stage = "not started"
+                  # Retain only the MCP server's session/affinity cookies. No website warm-up.
+                  self.opener = urllib.request.build_opener(
+                      urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), NoRedirect())
           
               def send(self, method, params=None, notification=False):
+                  self.stage = method
                   message = {"jsonrpc": "2.0", "method": method}
                   if params is not None:
                       message["params"] = params
@@ -198,6 +203,7 @@ jobs:
               params = dict(arguments)
               if name == "nse-bhavcopy":
                   params["date"] = date.isoformat()
+              failures = []
               for attempt in range(2):
                   client = Client(url)
                   try:
@@ -205,6 +211,8 @@ jobs:
                       data = tool_payload(client.send("tools/call", {"name": tool, "arguments": params}))
                       result = validate(name, data, date)
                       result["attempts"] = attempt + 1
+                      if failures:
+                          result["earlier_attempt_failures"] = failures
                       return result
                   except Exception as exc:
                       if isinstance(exc, urllib.error.HTTPError):
@@ -217,11 +225,14 @@ jobs:
                           reason = str(exc)
                       else:
                           reason = "Malformed response or unexpected schema"
+                      stage = client.stage
+                      failures.append({"attempt": attempt + 1, "stage": stage, "reason": reason})
                   finally:
                       client.close()
                   if not attempt:
                       time.sleep(2)  # One bounded retry; each attempt starts a fresh MCP session.
-              return {"status": "FAIL", "reason": reason, "attempts": 2}
+              return {"status": "FAIL", "reason": reason, "failed_stage": stage,
+                      "attempts": 2, "attempt_failures": failures}
           
           
           def main():
@@ -234,12 +245,16 @@ jobs:
               lines = ["## NSE MCP connectivity test", "", "Checked at: " + checked_at.isoformat(), "",
                        "| Service | Connectivity/schema | India VIX | Data as of | Calendar age (days) |",
                        "| --- | --- | --- | --- | --- |"]
+              diagnostics = []
               for name, result in results.items():
                   fields = [name, result["status"], result.get("value", "N/A"),
                             result.get("data_as_of", "N/A"), result.get("calendar_age_days", "N/A")]
                   lines.append("| " + " | ".join(html.escape(str(f)).replace("|", "&#124;") for f in fields) + " |")
                   if result["status"] == "FAIL":
-                      lines.append("\n" + name + ": " + result["reason"] + "\n")
+                      diagnostics.append("- " + name + ": " + result["reason"]
+                                         + "; stage: " + result["failed_stage"])
+              if diagnostics:
+                  lines.extend(["", *diagnostics])
               if passed and results["nse-bhavcopy"]["value"] != results["cm-market"]["value"]:
                   lines.extend(["", "**WARNING:** The two India VIX values differ. Reconcile session dates and final close versus last-published snapshot before use."])
               lines.extend(["", "This is a manual connectivity/schema test. It does not verify the trading calendar, 07:45 IST availability, report calculations or delivery.",
