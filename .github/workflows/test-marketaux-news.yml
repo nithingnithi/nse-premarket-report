@@ -1,0 +1,314 @@
+name: Test Marketaux news
+
+"on":
+  push:
+    branches: ["codex/marketaux-news-access"]
+    paths: [".github/workflows/test-marketaux-news.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: test-marketaux-news
+  cancel-in-progress: false
+
+jobs:
+  probe-news:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate Marketaux access and cutoff news coverage
+        env:
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          """GET-only Marketaux news probe; no delivery, scoring or raw-response logging.
+          
+          Source/schema: https://www.marketaux.com/documentation
+          Free-plan limits: https://www.marketaux.com/pricing
+          """
+          import datetime as dt
+          import html
+          import ipaddress
+          import json
+          import os
+          import re
+          import time
+          import unicodedata
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from zoneinfo import ZoneInfo
+          
+          IST = ZoneInfo("Asia/Kolkata")
+          UTC = dt.timezone.utc
+          ENDPOINT = "https://api.marketaux.com/v1/news/all"
+          CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-news report)"
+          QUERIES = (
+              ("India market entities", {"countries": "in"}),
+              ("India macro keywords", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
+              ("Global macro keywords", {"search": '"Federal Reserve" | inflation | crude | tariff | Treasury | geopolitics'}),
+          )
+          MAX_PAGES = 3
+          MAX_REQUESTS = 18  # Includes one transient retry per request; never an unlimited crawl.
+          
+          
+          class CheckFailure(Exception):
+              """Only fixed credential-free diagnostics may be raised."""
+          
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          
+          class API:
+              def __init__(self, token):
+                  if not isinstance(token, str) or not re.fullmatch(r"[!-~]{16,512}", token):
+                      raise CheckFailure("MARKETAUX_API_TOKEN is missing or malformed; check the repository secret.")
+                  self.token = token
+                  self.requests = 0
+                  self.stopped = False
+                  self.deadline = time.monotonic() + 210
+                  self.opener = urllib.request.build_opener(NoRedirect())
+          
+              def get(self, params):
+                  allowed = {"countries", "search", "language", "group_similar", "published_after", "published_before", "sort", "limit", "page"}
+                  if not isinstance(params, dict) or set(params) - allowed:
+                      raise CheckFailure("Request contains parameters outside the news-test allowlist.")
+                  # The documented API requires query authentication. Never print request
+                  # URLs, exception strings, response bodies or provider error messages.
+                  request = urllib.request.Request(ENDPOINT + "?" + urllib.parse.urlencode({**params, "api_token": self.token}),
+                                                   headers={"Accept": "application/json", "User-Agent": CLIENT_IDENTITY}, method="GET")
+                  for attempt in range(2):
+                      remaining = self.deadline - time.monotonic()
+                      if self.stopped or remaining <= 0 or self.requests >= MAX_REQUESTS:
+                          raise CheckFailure("The probe stopped at its bounded request/time budget.")
+                      self.requests += 1
+                      try:
+                          with self.opener.open(request, timeout=min(15, remaining)) as response:
+                              raw = response.read(2_000_001)
+                          if len(raw) > 2_000_000:
+                              raise CheckFailure("News response exceeded the size limit.")
+                          data = json.loads(raw)
+                          if not isinstance(data, dict) or "error" in data or "errors" in data:
+                              raise CheckFailure("Provider returned an error or unexpected JSON envelope; raw details suppressed.")
+                          return data
+                      except urllib.error.HTTPError as exc:
+                          code = exc.code
+                          exc.close()
+                          if code in (401, 402, 403, 429):
+                              self.stopped = True
+                              raise CheckFailure("HTTP " + str(code) + ": authentication, plan or quota rejection; further requests stopped.") from None
+                          if not attempt and 500 <= code <= 599:
+                              time.sleep(2)
+                              continue
+                          raise CheckFailure("HTTP " + str(code) + ": news request failed; URL and provider body suppressed.") from None
+                      except (urllib.error.URLError, TimeoutError, OSError):
+                          if not attempt:
+                              time.sleep(2)
+                              continue
+                          raise CheckFailure("Network/TLS request failed; verification was not bypassed.") from None
+                      except (ValueError, UnicodeError):
+                          raise CheckFailure("News response was not valid JSON; raw details suppressed.") from None
+          
+          
+          def cutoff_for(now):
+              cutoff = now.astimezone(IST).replace(hour=7, minute=45, second=0, microsecond=0)
+              return cutoff - dt.timedelta(days=1) if cutoff > now else cutoff
+          
+          
+          def published_time(value, now):
+              if not isinstance(value, str) or len(value) > 64:
+                  raise CheckFailure("Publication timestamp is missing or malformed.")
+              try:
+                  stamp = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+                  # The provider explicitly documents every date as UTC, including values
+                  # without an offset. This is a documented convention, not a timezone guess.
+                  if stamp.tzinfo is None:
+                      stamp = stamp.replace(tzinfo=UTC)
+                  if stamp > now + dt.timedelta(minutes=5):
+                      raise CheckFailure("Publication timestamp is in the future.")
+                  return stamp.astimezone(IST)
+              except ValueError:
+                  raise CheckFailure("Publication timestamp is malformed.") from None
+          
+          
+          def safe_link(value):
+              if not isinstance(value, str) or len(value) > 4096 or any(ord(c) < 33 for c in value):
+                  raise CheckFailure("Article URL is absent or malformed.")
+              try:
+                  url = urllib.parse.urlsplit(value)
+                  host = (url.hostname or "").encode("idna").decode("ascii").lower()
+                  if (url.scheme != "https" or url.username or url.password or url.port not in (None, 443)
+                          or not re.fullmatch(r"[a-z0-9.-]+", host) or "." not in host
+                          or host.endswith((".local", ".internal", ".localhost"))):
+                      raise CheckFailure("Article URL is outside the allowed HTTPS publisher-link format.")
+                  try:
+                      ipaddress.ip_address(host)
+                  except ValueError:
+                      pass
+                  else:
+                      raise CheckFailure("Article URL uses an IP address instead of a publisher domain.")
+                  query = []
+                  for key, val in urllib.parse.parse_qsl(url.query, keep_blank_values=True):
+                      lowered = key.casefold()
+                      if lowered.startswith("utm_") or lowered in ("fbclid", "gclid", "ref_src"):
+                          continue
+                      if lowered in ("token", "api_token", "apikey", "api_key", "access_token", "password", "session", "sessionid", "signature"):
+                          raise CheckFailure("Article URL contains a credential/session parameter.")
+                      query.append((key, val))
+                  return urllib.parse.urlunsplit(("https", host, url.path or "/", urllib.parse.urlencode(sorted(query)), ""))
+              except (ValueError, UnicodeError):
+                  raise CheckFailure("Article URL is malformed.") from None
+          
+          
+          def parse_page(payload, page, now):
+              meta, data = payload.get("meta"), payload.get("data")
+              if not isinstance(meta, dict):
+                  raise CheckFailure("News pagination metadata is absent.")
+              for field in ("found", "returned", "limit", "page"):
+                  if type(meta.get(field)) is not int or meta[field] < 0:
+                      raise CheckFailure("News pagination counters are invalid.")
+              if data == {} and meta["returned"] == 0:
+                  data = []  # Documented empty data object; no synthetic article is created.
+              if (not isinstance(data, list) or meta["page"] != page or meta["limit"] != 3
+                      or meta["returned"] != len(data) or meta["returned"] > 3 or meta["found"] < len(data)):
+                  raise CheckFailure("News pagination identity, free-plan limit or row count is inconsistent.")
+              rows = []
+              for row in data:
+                  if not isinstance(row, dict):
+                      raise CheckFailure("News article is not an object.")
+                  title, identity = row.get("title"), row.get("uuid")
+                  if (not isinstance(title, str) or not title.strip() or len(title) > 2000
+                          or not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", identity)):
+                      raise CheckFailure("Required news title or article identity is invalid.")
+                  stamp = published_time(row.get("published_at"), now)
+                  link = safe_link(row.get("url"))
+                  rows.append({"uuid": identity, "title": " ".join(html.unescape(title).split()),
+                               "url": link, "source": urllib.parse.urlsplit(link).hostname,
+                               "published_IST": stamp.isoformat(timespec="microseconds")})
+              return rows, meta
+          
+          
+          def request_params(filters, cutoff, page):
+              lower = cutoff - dt.timedelta(hours=12)
+              return {**filters, "language": "en", "group_similar": "true", "sort": "published_at", "limit": 3, "page": page,
+                      "published_after": lower.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                      # Widen the provider's exclusive upper boundary by one second;
+                      # local filtering below still requires publication <= exact cutoff.
+                      "published_before": (cutoff + dt.timedelta(seconds=1)).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S")}
+          
+          
+          def query_news(api, label, filters, cutoff, now):
+              kept, seen_ids, pages = [], set(), []
+              raw_rows, outside = 0, 0
+              incomplete = True
+              for page in range(1, MAX_PAGES + 1):
+                  rows, meta = parse_page(api.get(request_params(filters, cutoff, page)), page, now)
+                  pages.append({"page": page, "provider_found": meta["found"], "returned": meta["returned"]})
+                  for row in rows:
+                      if row["uuid"] in seen_ids:
+                          raise CheckFailure("Repeated article identity across query pages; pagination coverage cannot be trusted.")
+                      seen_ids.add(row["uuid"])
+                      raw_rows += 1
+                      stamp = dt.datetime.fromisoformat(row["published_IST"])
+                      if cutoff - dt.timedelta(hours=12) < stamp <= cutoff:
+                          kept.append(row)
+                      else:
+                          outside += 1
+                  if meta["returned"] < meta["limit"] or raw_rows >= meta["found"]:
+                      incomplete = False
+                      break
+              result = {"check": label, "status": "PARTIAL" if incomplete or not kept or outside else "PASS",
+                        "access_schema": "PASS", "pages": pages, "validated_rows": raw_rows,
+                        "matching_window_rows": len(kept), "outside_window_rows": outside,
+                        "pagination_capped": incomplete,
+                        "scope": "Entity-country filter" if "countries" in filters else "Keyword-selected news; editorial relevance unverified."}
+              if not kept:
+                  result["note"] = "No matching articles returned; never interpreted as no market news."
+              return result, kept
+          
+          
+          def deduplicate(rows):
+              kept, ids, links, titles = [], set(), set(), set()
+              for row in sorted(rows, key=lambda x: dt.datetime.fromisoformat(x["published_IST"]), reverse=True):
+                  normalized = " ".join(re.findall(r"\w+", unicodedata.normalize("NFKC", row["title"]).casefold()))
+                  if not normalized:
+                      raise CheckFailure("Article title has no usable text.")
+                  if row["uuid"] in ids or row["url"] in links or normalized in titles:
+                      continue
+                  ids.add(row["uuid"])
+                  links.add(row["url"])
+                  titles.add(normalized)
+                  kept.append(row)
+              return kept, len(rows) - len(kept)
+          
+          
+          def redact(value, token):
+              if isinstance(value, str):
+                  for variant in (token, urllib.parse.quote(token, safe=""), urllib.parse.quote_plus(token)):
+                      if variant:
+                          value = value.replace(variant, "[REDACTED]")
+                  return value
+              if isinstance(value, list):
+                  return [redact(item, token) for item in value]
+              if isinstance(value, dict):
+                  return {redact(key, token): redact(item, token) for key, item in value.items()}
+              return value
+          
+          
+          def run_checks(api, now):
+              cutoff = cutoff_for(now)
+              results, articles = [], []
+              for label, filters in QUERIES:
+                  if api.stopped:
+                      results.append({"check": label, "status": "SKIPPED", "reason": "Earlier authentication, plan, quota or budget rejection."})
+                      continue
+                  try:
+                      result, rows = query_news(api, label, filters, cutoff, now)
+                      results.append(result)
+                      articles.extend(rows)
+                  except CheckFailure as exc:
+                      results.append({"check": label, "status": "FAIL", "reason": str(exc)})
+                  except Exception:
+                      results.append({"check": label, "status": "FAIL", "reason": "Unexpected news schema; raw sensitive details suppressed."})
+              unique, duplicates = deduplicate(articles)
+              return {"checked_at_IST": now.isoformat(), "cutoff_IST": cutoff.isoformat(),
+                      "window_start_exclusive_IST": (cutoff - dt.timedelta(hours=12)).isoformat(),
+                      "status": ("FAIL" if any(row["status"] == "FAIL" for row in results)
+                                 else "PASS" if all(row["status"] == "PASS" for row in results) else "PARTIAL"),
+                      "queries": results, "http_attempts": api.requests, "max_http_attempts": MAX_REQUESTS,
+                      "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique[:12],
+                      "summary_article_limit": 12, "coverage": "Selected queries only; not an exhaustive market-news archive.",
+                      "deduplication": "Provider similar-story grouping plus local UUID, canonical URL and normalized-title matching; paraphrased syndication remains unverified.",
+                      "date_convention": "Marketaux documents all dates as UTC; displayed in IST.",
+                      "scope": "Manual access/date/schema test only. No news-derived signal, causal narrative, score, Telegram message or PDF is generated."}
+          
+          
+          def main():
+              now = dt.datetime.now(IST)
+              token = os.environ.get("MARKETAUX_API_TOKEN", "")
+              try:
+                  report = run_checks(API(token), now)
+              except CheckFailure as exc:
+                  report = {"status": "FAIL", "reason": str(exc)}
+              except Exception:
+                  report = {"status": "FAIL", "reason": "Unexpected probe failure; raw sensitive details suppressed."}
+              report = redact(report, token)
+              print(json.dumps(report, ensure_ascii=True))
+              if os.environ.get("GITHUB_STEP_SUMMARY"):
+                  text = ["## Marketaux news access and cutoff test", "", "Status: " + report["status"], "",
+                          "PASS means the selected query/date/schema checks passed; it is not independent VERIFIED news coverage or production readiness.", "",
+                          html.escape(json.dumps(report, ensure_ascii=True)), "",
+                          "The test uses the latest elapsed 07:45 IST cutoff. Evening runs inspect that morning's 12-hour window. Empty results, capped pagination and malformed data remain explicit.",
+                          "Sources: https://www.marketaux.com/documentation and https://www.marketaux.com/pricing", ""]
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+                      stream.write("\n".join(text))
+              return 0 if report["status"] == "PASS" else 1
+          
+          
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
