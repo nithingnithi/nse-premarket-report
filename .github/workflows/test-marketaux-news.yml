@@ -50,8 +50,8 @@ jobs:
               ("India macro keywords", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
               ("Global macro keywords", {"search": '"Federal Reserve" | inflation | crude | tariff | Treasury | geopolitics'}),
           )
-          MAX_PAGES = 40
-          MAX_REQUESTS = 70  # Includes transient retries; leave headroom under 100/day.
+          MAX_PAGES = 3  # Bounded recent-story selection; unmet provider pagination stays PARTIAL.
+          MAX_REQUESTS = 18  # Includes transient retries; daily free quota is shared across runs.
           
           
           class CheckFailure(Exception):
@@ -71,6 +71,7 @@ jobs:
                   self.requests = 0
                   self.stopped = False
                   self.deadline = time.monotonic() + 210
+                  self.last_request_at = None
                   self.opener = urllib.request.build_opener(NoRedirect())
           
               def get(self, params):
@@ -82,11 +83,16 @@ jobs:
                   request = urllib.request.Request(ENDPOINT + "?" + urllib.parse.urlencode({**params, "api_token": self.token}),
                                                    headers={"Accept": "application/json", "User-Agent": CLIENT_IDENTITY}, method="GET")
                   for attempt in range(2):
+                      if self.last_request_at is not None:
+                          pause = 1.2 - (time.monotonic() - self.last_request_at)
+                          if pause > 0:
+                              time.sleep(pause)
                       remaining = self.deadline - time.monotonic()
                       if self.stopped or remaining <= 0 or self.requests >= MAX_REQUESTS:
                           self.stopped = True
                           raise CheckFailure("The probe stopped at its bounded request/time budget.")
                       self.requests += 1
+                      self.last_request_at = time.monotonic()
                       try:
                           with self.opener.open(request, timeout=min(15, remaining)) as response:
                               raw = response.read(2_000_001)
@@ -206,12 +212,18 @@ jobs:
               kept, seen_ids, pages = [], set(), []
               raw_rows, outside = 0, 0
               incomplete = True
+              failure, failed_page = None, None
               for page in range(1, MAX_PAGES + 1):
-                  rows, meta = parse_page(api.get(request_params(filters, cutoff, page)), page, now)
+                  try:
+                      rows, meta = parse_page(api.get(request_params(filters, cutoff, page)), page, now)
+                      identities = [row["uuid"] for row in rows]
+                      if len(set(identities)) != len(identities) or seen_ids.intersection(identities):
+                          raise CheckFailure("Repeated article identity across query pages; pagination coverage cannot be trusted.")
+                  except CheckFailure as exc:
+                      failure, failed_page = str(exc), page
+                      break  # Keep already validated pages, without labelling them complete.
                   pages.append({"page": page, "provider_found": meta["found"], "returned": meta["returned"]})
                   for row in rows:
-                      if row["uuid"] in seen_ids:
-                          raise CheckFailure("Repeated article identity across query pages; pagination coverage cannot be trusted.")
                       seen_ids.add(row["uuid"])
                       raw_rows += 1
                       stamp = dt.datetime.fromisoformat(row["published_IST"])
@@ -222,11 +234,13 @@ jobs:
                   if meta["returned"] < meta["limit"] or raw_rows >= meta["found"]:
                       incomplete = False
                       break
-              result = {"check": label, "status": "PARTIAL" if incomplete or not kept or outside else "PASS",
-                        "access_schema": "PASS", "pages": pages, "validated_rows": raw_rows,
+              result = {"check": label, "status": ("FAIL" if failure else "PARTIAL" if incomplete or not kept or outside else "PASS"),
+                        "access_schema": "PASS" if pages else "UNVERIFIED", "pages": pages, "validated_rows": raw_rows,
                         "matching_window_rows": len(kept), "outside_window_rows": outside,
-                        "pagination_capped": incomplete,
+                        "pagination_capped": incomplete and failure is None, "retrieval_incomplete": incomplete,
                         "scope": "Entity-country filter" if "countries" in filters else "Keyword-selected news; editorial relevance unverified."}
+              if failure:
+                  result.update(reason=failure, failed_page=failed_page)
               if not kept:
                   result["note"] = "No matching articles returned; never interpreted as no market news."
               return result, kept
