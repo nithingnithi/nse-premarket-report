@@ -1,9 +1,6 @@
 name: Test Upstox futures and flows
 
 "on":
-  push:
-    branches: ["codex/flow-date-diagnostics"]
-    paths: [".github/workflows/test-upstox-futures-flows.yml"]
   workflow_dispatch:
 
 permissions: {}
