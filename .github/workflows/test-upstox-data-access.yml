@@ -1,0 +1,295 @@
+name: Test Upstox data access
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: test-upstox-data-access
+  cancel-in-progress: false
+
+jobs:
+  probe-upstox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check read-only quotes and option chains
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          """Manual GET-only Upstox probe. Never prints credentials or raw responses.
+          
+          Documentation read: https://upstox.com/developer/api-documentation/
+          analytics-token/, get-full-market-quote/, get-option-contracts/, get-pc-option-chain/
+          This is an access/schema test, not the report's expiry policy or scoring model.
+          """
+          import datetime as dt
+          import html
+          import json
+          import math
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from zoneinfo import ZoneInfo
+          
+          IST = ZoneInfo("Asia/Kolkata")
+          INDICES = {"Nifty": "NSE_INDEX|Nifty 50", "Bank Nifty": "NSE_INDEX|Nifty Bank",
+                     "India VIX": "NSE_INDEX|India VIX"}
+          PATHS = {"/market-quote/quotes", "/option/contract", "/option/chain"}
+          
+          
+          class CheckFailure(Exception):
+              """Only fixed, credential-free messages may be raised here."""
+          
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          
+          def number(value, positive=False):
+              return (type(value) in (int, float) and math.isfinite(value)
+                      and (value > 0 if positive else value >= 0))
+          
+          
+          class API:
+              def __init__(self, token):
+                  if not isinstance(token, str) or not 20 <= len(token) <= 8192 or not re.fullmatch(r"[!-~]+", token):
+                      raise CheckFailure("UPSTOX_ANALYTICS_TOKEN is missing or malformed; save only the token value.")
+                  self.token = token
+                  self.auth_failed = False
+                  self.opener = urllib.request.build_opener(NoRedirect())
+          
+              def get(self, path, params):
+                  if path not in PATHS:
+                      raise CheckFailure("Request path is outside the read-only test allowlist.")
+                  request = urllib.request.Request(
+                      "https://api.upstox.com/v2" + path + "?" + urllib.parse.urlencode(params),
+                      headers={"Accept": "application/json", "Authorization": "Bearer " + self.token},
+                      method="GET",
+                  )
+                  for attempt in range(2):
+                      try:
+                          with self.opener.open(request, timeout=15) as response:
+                              raw = response.read(4_000_001)
+                          if len(raw) > 4_000_000:
+                              raise CheckFailure("Response exceeded the size limit.")
+                          payload = json.loads(raw)
+                          if not isinstance(payload, dict) or payload.get("status") != "success" or "data" not in payload:
+                              raise CheckFailure("API returned an error or unexpected response envelope.")
+                          return payload["data"]
+                      except urllib.error.HTTPError as exc:
+                          code = exc.code
+                          exc.close()
+                          if code in (401, 403):
+                              self.auth_failed = True
+                              raise CheckFailure("HTTP " + str(code) + ": token or market-data access was rejected.") from None
+                          if not attempt and (code == 429 or 500 <= code <= 599):
+                              time.sleep(2)
+                              continue
+                          raise CheckFailure("HTTP " + str(code) + ": request failed; response details suppressed.") from None
+                      except (urllib.error.URLError, TimeoutError):
+                          if not attempt:
+                              time.sleep(2)
+                              continue
+                          raise CheckFailure("Network/TLS request failed; verification was not bypassed.") from None
+                      except (ValueError, UnicodeError):
+                          raise CheckFailure("Response was not valid JSON; details suppressed.") from None
+          
+          
+          def timestamp(value, now):
+              if value is None or value == "":
+                  return None
+              try:
+                  if isinstance(value, str) and re.fullmatch(r"[0-9]{13}", value):
+                      result = dt.datetime.fromtimestamp(int(value) / 1000, dt.timezone.utc)
+                  elif type(value) is int and 1_000_000_000_000 <= value < 10_000_000_000_000:
+                      result = dt.datetime.fromtimestamp(value / 1000, dt.timezone.utc)
+                  elif isinstance(value, str):
+                      result = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+                      if result.tzinfo is None:
+                          return None  # Do not invent a timezone.
+                  else:
+                      return None
+                  if result > now + dt.timedelta(minutes=5):
+                      raise CheckFailure("Provider timestamp is in the future.")
+                  return result.astimezone(IST).isoformat(timespec="seconds")
+              except (ValueError, OverflowError, OSError):
+                  return None
+          
+          
+          def quote(data, key, now):
+              if not isinstance(data, dict):
+                  raise CheckFailure("Quote data is not an object.")
+              matches = [row for row in data.values() if isinstance(row, dict)
+                         and row.get("instrument_token") == key]
+              if len(matches) != 1 or not number(matches[0].get("last_price"), positive=True):
+                  raise CheckFailure("Quote identity, uniqueness or price validation failed.")
+              row = matches[0]
+              stamp = timestamp(row.get("timestamp"), now)
+              return {"status": "PASS" if stamp else "PARTIAL", "last_price": row["last_price"],
+                      "quote_time_IST": stamp or "N/A",
+                      "last_trade_time_IST": timestamp(row.get("last_trade_time"), now) or "N/A"}
+          
+          
+          def contracts(data, key, today):
+              if not isinstance(data, list) or not data:
+                  raise CheckFailure("No option contracts were returned.")
+              seen, parsed = set(), []
+              for row in data:
+                  if not isinstance(row, dict) or row.get("underlying_key") != key:
+                      raise CheckFailure("Option contracts contain an unexpected underlying.")
+                  try:
+                      expiry = dt.date.fromisoformat(row["expiry"])
+                  except (KeyError, ValueError, TypeError):
+                      raise CheckFailure("An option contract has an invalid expiry.") from None
+                  identity = row.get("instrument_key")
+                  if (not isinstance(identity, str) or not re.fullmatch(r"NSE_FO\|[0-9]+", identity)
+                          or identity in seen or row.get("instrument_type") not in ("CE", "PE")
+                          or not number(row.get("strike_price"), positive=True)
+                          or type(row.get("lot_size")) is not int or row["lot_size"] <= 0):
+                      raise CheckFailure("Option-contract identity, duplicate, strike or lot-size validation failed.")
+                  seen.add(identity)
+                  parsed.append((expiry, row))
+              future = sorted({expiry for expiry, _ in parsed if expiry > today})
+              if not future:
+                  raise CheckFailure("No expiry strictly after today is available for this probe.")
+              expiry = future[0]  # Probe only; no assumption about weekly/monthly schedules.
+              selected = {}
+              for day, row in parsed:
+                  if day != expiry:
+                      continue
+                  identity = (row["strike_price"], row["instrument_type"])
+                  if identity in selected:
+                      raise CheckFailure("Duplicate contracts share the selected expiry, strike and option type.")
+                  selected[identity] = row
+              return expiry.isoformat(), selected
+          
+          
+          def chain(data, key, expiry, selected):
+              if not isinstance(data, list) or not data:
+                  raise CheckFailure("The selected option chain is empty.")
+              strikes, leg_keys, complete, missing = set(), set(), [], 0
+              for row in data:
+                  if (not isinstance(row, dict) or row.get("expiry") != expiry
+                          or row.get("underlying_key") != key
+                          or not number(row.get("strike_price"), positive=True)
+                          or not number(row.get("underlying_spot_price"), positive=True)):
+                      raise CheckFailure("Option-chain expiry, underlying or strike does not match the request.")
+                  strike = row["strike_price"]
+                  if strike in strikes:
+                      raise CheckFailure("Duplicate option-chain strike rows.")
+                  strikes.add(strike)
+                  row_complete = True
+                  for side, option_type in (("call_options", "CE"), ("put_options", "PE")):
+                      leg = row.get(side)
+                      if leg is None:
+                          missing += 2
+                          row_complete = False
+                          continue
+                      expected = selected.get((strike, option_type))
+                      if (not isinstance(leg, dict) or expected is None
+                              or leg.get("instrument_key") != expected["instrument_key"]
+                              or leg["instrument_key"] in leg_keys):
+                          raise CheckFailure("Option-chain leg does not match a unique contract.")
+                      leg_keys.add(leg["instrument_key"])
+                      market = leg.get("market_data")
+                      if not isinstance(market, dict):
+                          missing += 2
+                          row_complete = False
+                          continue
+                      for field in ("oi", "prev_oi"):
+                          value = market.get(field)
+                          if value is None:
+                              missing += 1
+                              row_complete = False
+                          elif not number(value):
+                              raise CheckFailure("An OI field is negative, nonnumeric or nonfinite.")
+                  if row_complete:
+                      complete.append(row)
+              if not complete:
+                  raise CheckFailure("No strike has both option legs and current/previous OI.")
+              absent = len(selected) - len(leg_keys)
+              sample = min(complete, key=lambda row: abs(row["strike_price"] - row["underlying_spot_price"]))
+              return {"status": "PARTIAL" if missing or absent else "PASS", "expiry": expiry,
+                      "strike_rows": len(strikes), "complete_OI_strikes": len(complete),
+                      "missing_OI_fields": missing, "contracts_absent_from_chain": absent,
+                      "lot_sizes": sorted({r["lot_size"] for r in selected.values()})}, [
+                          sample["call_options"]["instrument_key"], sample["put_options"]["instrument_key"]]
+          
+          
+          def run_checks(api, now):
+              results = []
+              try:
+                  data = api.get("/market-quote/quotes", {"instrument_key": ",".join(INDICES.values())})
+                  for name, key in INDICES.items():
+                      try:
+                          results.append({"check": name + " quote", **quote(data, key, now)})
+                      except CheckFailure as exc:
+                          results.append({"check": name + " quote", "status": "FAIL", "reason": str(exc)})
+              except CheckFailure as exc:
+                  results.append({"check": "Index quotes", "status": "FAIL", "reason": str(exc)})
+              for name in ("Nifty", "Bank Nifty"):
+                  if api.auth_failed:
+                      results.append({"check": name + " option chain", "status": "SKIPPED", "reason": "Prior authentication/access rejection."})
+                      continue
+                  stage = "contracts"
+                  try:
+                      key = INDICES[name]
+                      expiry, selected = contracts(api.get("/option/contract", {"instrument_key": key}), key, now.date())
+                      stage = "chain"
+                      checked, sample_keys = chain(api.get("/option/chain", {"instrument_key": key, "expiry_date": expiry}), key, expiry, selected)
+                      stage = "sample-leg timestamps"
+                      samples = api.get("/market-quote/quotes", {"instrument_key": ",".join(sample_keys)})
+                      checked["sample_quotes"] = [quote(samples, sample_key, now) for sample_key in sample_keys]
+                      if any(q["status"] != "PASS" for q in checked["sample_quotes"]):
+                          checked["status"] = "PARTIAL"
+                      results.append({"check": name + " option chain", **checked})
+                  except CheckFailure as exc:
+                      results.append({"check": name + " option chain", "status": "FAIL", "stage": stage, "reason": str(exc)})
+              return results
+          
+          
+          def summary(results, now):
+              lines = ["## Upstox data-access test", "", "Checked at: " + now.isoformat(), "",
+                       "| Check | Access/schema | Expiry | Quote time (IST) | Last trade (IST) |",
+                       "| --- | --- | --- | --- | --- |"]
+              for result in results:
+                  fields = [result["check"], result["status"], result.get("expiry", "N/A"),
+                            result.get("quote_time_IST", "N/A"), result.get("last_trade_time_IST", "N/A")]
+                  lines.append("| " + " | ".join(html.escape(str(f)).replace("|", "&#124;") for f in fields) + " |")
+              lines.extend(["", "Validated metadata (credentials and raw API responses are never printed):", ""])
+              lines.extend("- " + json.dumps(result, ensure_ascii=True) for result in results)
+              lines.extend(["", "PASS means this access/schema check succeeded. PARTIAL means required fields or coverage are incomplete.",
+                            "Freshness, quote/trade timestamp meaning, OI units, prev_oi session baseline and 07:45 IST availability require further validation.",
+                            "Option-chain responses do not provide a chain-wide timestamp in the documented schema. Sample-leg timestamps do not establish whole-chain freshness.",
+                            "For this probe only, expiry is the earliest returned date strictly after today. No weekly label is inferred, and the report expiry policy is not set.",
+                            "No PCR, bias or score is calculated. Futures/OI, FII/DII, news and global data are not tested here.", ""])
+              return "\n".join(lines)
+          
+          
+          def main():
+              now = dt.datetime.now(IST)
+              try:
+                  results = run_checks(API(os.environ.get("UPSTOX_ANALYTICS_TOKEN", "")), now)
+              except CheckFailure as exc:
+                  results = [{"check": "Configuration", "status": "FAIL", "reason": str(exc)}]
+              except Exception:
+                  results = [{"check": "Probe", "status": "FAIL", "reason": "Unexpected response/schema; sensitive details suppressed."}]
+              for result in results:
+                  print(json.dumps(result, ensure_ascii=True))
+              if os.environ.get("GITHUB_STEP_SUMMARY"):
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+                      stream.write(summary(results, now))
+              return 0 if results and all(r["status"] == "PASS" for r in results) else 1
+          
+          
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
