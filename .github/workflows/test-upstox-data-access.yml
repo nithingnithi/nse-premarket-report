@@ -58,6 +58,44 @@ jobs:
                       and (value > 0 if positive else value >= 0))
           
           
+          def http_error_diagnostic(error):
+              """Expose only categorical markers and tightly validated Upstox codes.
+          
+              Never return response messages, URLs, headers, identifiers or raw body text.
+              """
+              try:
+                  raw = error.read(16_385)
+                  truncated = len(raw) > 16_384
+                  raw = raw[:16_384]
+                  text = raw.decode("utf-8", errors="replace")
+                  lower = text.lower()
+                  codes = set()
+                  kind = "HTML" if re.search(r"<(?:!doctype\s+html|html|head|body)\b", lower) else "OTHER"
+                  try:
+                      data = json.loads(text)
+                      kind = "JSON"
+                      if isinstance(data, dict):
+                          entries = [data]
+                          if isinstance(data.get("errors"), list):
+                              entries.extend(data["errors"][:20])
+                          for entry in entries:
+                              if not isinstance(entry, dict):
+                                  continue
+                              for field in ("errorCode", "error_code"):
+                                  code = entry.get(field)
+                                  if isinstance(code, str) and re.fullmatch(r"UDAPI[0-9]{1,8}", code):
+                                      codes.add(code)
+                  except (ValueError, TypeError):
+                      pass
+                  cloudflare = "cloudflare" in lower
+                  return ("body=" + kind + "; provider_codes=" + (",".join(sorted(codes)[:5]) or "none")
+                          + "; cloudflare_marker=" + ("yes" if cloudflare else "no")
+                          + "; error_1010_marker=" + ("yes" if cloudflare and re.search(r"\b1010\b", lower) else "no")
+                          + "; truncated=" + ("yes" if truncated else "no"))
+              except Exception:
+                  return "body=UNREADABLE; provider_codes=none"
+          
+          
           class API:
               def __init__(self, token):
                   if not isinstance(token, str) or not 20 <= len(token) <= 8192 or not re.fullmatch(r"[!-~]+", token):
@@ -86,14 +124,17 @@ jobs:
                           return payload["data"]
                       except urllib.error.HTTPError as exc:
                           code = exc.code
-                          exc.close()
+                          try:
+                              diagnostic = http_error_diagnostic(exc)
+                          finally:
+                              exc.close()
                           if code in (401, 403):
                               self.auth_failed = True
-                              raise CheckFailure("HTTP " + str(code) + ": token or market-data access was rejected.") from None
+                              raise CheckFailure("HTTP " + str(code) + ": request rejected; " + diagnostic) from None
                           if not attempt and (code == 429 or 500 <= code <= 599):
                               time.sleep(2)
                               continue
-                          raise CheckFailure("HTTP " + str(code) + ": request failed; response details suppressed.") from None
+                          raise CheckFailure("HTTP " + str(code) + ": request failed; " + diagnostic) from None
                       except (urllib.error.URLError, TimeoutError):
                           if not attempt:
                               time.sleep(2)
@@ -237,7 +278,7 @@ jobs:
                   results.append({"check": "Index quotes", "status": "FAIL", "reason": str(exc)})
               for name in ("Nifty", "Bank Nifty"):
                   if api.auth_failed:
-                      results.append({"check": name + " option chain", "status": "SKIPPED", "reason": "Prior authentication/access rejection."})
+                      results.append({"check": name + " option chain", "status": "SKIPPED", "reason": "Prior request was rejected; this endpoint was not independently tested."})
                       continue
                   stage = "contracts"
                   try:
@@ -267,6 +308,7 @@ jobs:
               lines.extend(["", "Validated metadata (credentials and raw API responses are never printed):", ""])
               lines.extend("- " + json.dumps(result, ensure_ascii=True) for result in results)
               lines.extend(["", "PASS means this access/schema check succeeded. PARTIAL means required fields or coverage are incomplete.",
+                            "An HTTP 401/403 alone does not establish the cause. Diagnostics expose only response type, validated UDAPI codes and known edge-service markers; credentials, messages and raw bodies stay hidden.",
                             "Freshness, quote/trade timestamp meaning, OI units, prev_oi session baseline and 07:45 IST availability require further validation.",
                             "Option-chain responses do not provide a chain-wide timestamp in the documented schema. Sample-leg timestamps do not establish whole-chain freshness.",
                             "For this probe only, expiry is the earliest returned date strictly after today. No weekly label is inferred, and the report expiry policy is not set.",
