@@ -19,6 +19,7 @@ jobs:
     steps:
       - name: Validate Marketaux access and cutoff news coverage
         env:
+          NEWS_PROBE_SCOPE: global_macro
           MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
         shell: bash
         run: |
@@ -52,6 +53,25 @@ jobs:
           )
           MAX_PAGES = 40  # Unmet provider pagination stays PARTIAL at either bounded limit.
           MAX_REQUESTS = 70  # Includes transient retries; daily free quota is shared across runs.
+          ERROR_CODES = {"malformed_parameters", "invalid_api_token", "usage_limit_reached", "endpoint_access_restricted",
+                         "resource_not_found", "invalid_api_endpoint", "rate_limit_reached", "server_error", "maintenance_mode"}
+          
+          
+          def numeric_header(headers, key):
+              value = headers.get(key) if headers is not None else None
+              return int(value) if isinstance(value, str) and re.fullmatch(r"[0-9]{1,5}", value) and 1 <= int(value) <= 10000 else None
+          
+          
+          def error_code(error):
+              try:
+                  raw = error.read(16_385)
+                  if len(raw) > 16_384:
+                      return None
+                  data = json.loads(raw)
+                  code = data.get("error", {}).get("code") if isinstance(data, dict) and isinstance(data.get("error"), dict) else None
+                  return code if isinstance(code, str) and code in ERROR_CODES else None
+              except Exception:
+                  return None  # Never expose provider messages or reflected request URLs.
           
           
           class CheckFailure(Exception):
@@ -64,14 +84,19 @@ jobs:
           
           
           class API:
-              def __init__(self, token):
+              def __init__(self, token, max_requests=MAX_REQUESTS):
                   if not isinstance(token, str) or not re.fullmatch(r"[!-~]{16,512}", token):
                       raise CheckFailure("MARKETAUX_API_TOKEN is missing or malformed; check the repository secret.")
                   self.token = token
                   self.requests = 0
+                  if type(max_requests) is not int or not 1 <= max_requests <= MAX_REQUESTS:
+                      raise CheckFailure("Request budget is outside the bounded probe range.")
+                  self.max_requests = max_requests
                   self.stopped = False
                   self.deadline = time.monotonic() + 210
                   self.last_request_at = None
+                  self.min_interval = 2.2
+                  self.rate_limit_per_60_seconds = None
                   self.opener = urllib.request.build_opener(NoRedirect())
           
               def get(self, params):
@@ -84,17 +109,21 @@ jobs:
                                                    headers={"Accept": "application/json", "User-Agent": CLIENT_IDENTITY}, method="GET")
                   for attempt in range(2):
                       if self.last_request_at is not None:
-                          pause = 1.2 - (time.monotonic() - self.last_request_at)
+                          pause = self.min_interval - (time.monotonic() - self.last_request_at)
                           if pause > 0:
                               time.sleep(pause)
                       remaining = self.deadline - time.monotonic()
-                      if self.stopped or remaining <= 0 or self.requests >= MAX_REQUESTS:
+                      if self.stopped or remaining <= 0 or self.requests >= self.max_requests:
                           self.stopped = True
                           raise CheckFailure("The probe stopped at its bounded request/time budget.")
                       self.requests += 1
                       self.last_request_at = time.monotonic()
                       try:
                           with self.opener.open(request, timeout=min(15, remaining)) as response:
+                              limit = numeric_header(getattr(response, "headers", {}), "X-RateLimit-Limit")
+                              if limit:
+                                  self.rate_limit_per_60_seconds = limit
+                                  self.min_interval = max(2.2, 60 / limit + 0.2)
                               raw = response.read(2_000_001)
                           if len(raw) > 2_000_000:
                               raise CheckFailure("News response exceeded the size limit.")
@@ -104,10 +133,13 @@ jobs:
                           return data
                       except urllib.error.HTTPError as exc:
                           code = exc.code
+                          provider_code = error_code(exc)
                           exc.close()
                           if code in (401, 402, 403, 429):
                               self.stopped = True
-                              raise CheckFailure("HTTP " + str(code) + ": authentication, plan or quota rejection; further requests stopped.") from None
+                              category = {401: "invalid authentication", 402: "plan usage limit reached", 403: "endpoint access restricted",
+                                          429: "rolling 60-second rate limit reached"}[code]
+                              raise CheckFailure("HTTP " + str(code) + ": " + category + "; provider_code=" + (provider_code or "unavailable") + "; further requests stopped.") from None
                           if not attempt and 500 <= code <= 599:
                               time.sleep(2)
                               continue
@@ -274,10 +306,10 @@ jobs:
               return value
           
           
-          def run_checks(api, now):
+          def run_checks(api, now, queries=QUERIES):
               cutoff = cutoff_for(now)
               results, articles = [], []
-              for label, filters in QUERIES:
+              for label, filters in queries:
                   if api.stopped:
                       results.append({"check": label, "status": "SKIPPED", "reason": "Earlier authentication, plan, quota or budget rejection."})
                       continue
@@ -294,7 +326,9 @@ jobs:
                       "window_start_exclusive_IST": (cutoff - dt.timedelta(hours=12)).isoformat(),
                       "status": ("FAIL" if any(row["status"] == "FAIL" for row in results)
                                  else "PASS" if all(row["status"] == "PASS" for row in results) else "PARTIAL"),
-                      "queries": results, "http_attempts": api.requests, "max_http_attempts": MAX_REQUESTS,
+                      "queries": results, "requested_query_count": len(queries), "http_attempts": api.requests,
+                      "max_http_attempts": getattr(api, "max_requests", MAX_REQUESTS),
+                      "rate_limit_per_60_seconds": getattr(api, "rate_limit_per_60_seconds", None),
                       "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique[:12],
                       "summary_article_limit": 12, "coverage": "Selected queries only; not an exhaustive market-news archive.",
                       "deduplication": "Provider similar-story grouping plus local UUID, canonical URL and normalized-title matching; paraphrased syndication remains unverified.",
@@ -306,7 +340,12 @@ jobs:
               now = dt.datetime.now(IST)
               token = os.environ.get("MARKETAUX_API_TOKEN", "")
               try:
-                  report = run_checks(API(token), now)
+                  scope = os.environ.get("NEWS_PROBE_SCOPE", "all")
+                  if scope not in ("all", "global_macro"):
+                      raise CheckFailure("News probe scope must be all or global_macro.")
+                  queries = QUERIES if scope == "all" else (QUERIES[-1],)
+                  budget = MAX_REQUESTS if scope == "all" else 39
+                  report = run_checks(API(token, max_requests=budget), now, queries)
               except CheckFailure as exc:
                   report = {"status": "FAIL", "reason": str(exc)}
               except Exception:
