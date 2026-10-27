@@ -1,0 +1,129 @@
+name: Set up Telegram channel
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: setup-telegram-channel
+  cancel-in-progress: false
+
+jobs:
+  identify-channel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Identify owner-authorized channel and verify posting permission
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          """Identify a recently owner-authorized channel; never send a message."""
+          import html
+          import json
+          import os
+          import re
+          import time
+          import urllib.request
+          
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          
+          def choose_channel(updates, owner_id, bot_id, now):
+              if not isinstance(updates, list) or len(updates) >= 100:
+                  raise ValueError("Update backlog/schema requires review; no updates were acknowledged.")
+              candidates = set()
+              for update in updates:
+                  event = update.get("my_chat_member") if isinstance(update, dict) else None
+                  if not isinstance(event, dict):
+                      continue
+                  chat, actor, member = event.get("chat"), event.get("from"), event.get("new_chat_member")
+                  if not all(isinstance(x, dict) for x in (chat, actor, member)):
+                      continue
+                  user, stamp = member.get("user"), event.get("date")
+                  if (chat.get("type") == "channel" and type(chat.get("id")) is int and chat["id"] < 0
+                          and actor.get("id") == owner_id and actor.get("is_bot") is False
+                          and isinstance(user, dict) and user.get("id") == bot_id and user.get("is_bot") is True
+                          and member.get("status") == "administrator"
+                          and type(stamp) is int and 0 <= now - stamp <= 3600):
+                      candidates.add(chat["id"])
+              if len(candidates) != 1:
+                  raise ValueError("No unique recent channel-admin event from the configured owner. Channel pairing needs a fresh event or review.")
+              return next(iter(candidates))
+          
+          
+          def verify_members(chat, bot_member, owner_member, channel_id, bot_id, owner_id):
+              if not isinstance(chat, dict) or chat.get("id") != channel_id or chat.get("type") != "channel":
+                  raise ValueError("Selected chat is not the expected channel.")
+              for member, expected_id in ((bot_member, bot_id), (owner_member, owner_id)):
+                  if not isinstance(member, dict) or not isinstance(member.get("user"), dict) or member["user"].get("id") != expected_id:
+                      raise ValueError("Channel member identity was not confirmed.")
+              if bot_member.get("status") != "administrator" or bot_member.get("can_post_messages") is not True:
+                  raise ValueError("Bot is not currently an administrator with Post Messages permission.")
+              if owner_member.get("status") != "creator":
+                  raise ValueError("Configured private-chat user was not confirmed as channel owner.")
+          
+          
+          def main():
+              token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+              owner = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+              if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token) or not re.fullmatch(r"[1-9][0-9]*", owner):
+                  raise ValueError("Existing Telegram bot/private-chat secrets are missing or malformed.")
+              owner_id = int(owner)
+              opener = urllib.request.build_opener(NoRedirect())
+          
+              def api(method, parameters=None):
+                  request = urllib.request.Request("https://api.telegram.org/bot" + token + "/" + method,
+                                                   data=json.dumps(parameters or {}).encode(),
+                                                   headers={"Content-Type": "application/json"}, method="POST")
+                  try:
+                      with opener.open(request, timeout=20) as response:
+                          payload = json.loads(response.read(2_000_000))
+                  except Exception:
+                      raise ValueError("Telegram request failed; sensitive URLs/responses are suppressed.") from None
+                  if not isinstance(payload, dict) or payload.get("ok") is not True:
+                      raise ValueError("Telegram rejected a read request; sensitive response details are suppressed.")
+                  return payload.get("result")
+          
+              bot = api("getMe")
+              if (not isinstance(bot, dict) or bot.get("username", "").lower() != "nsemorningreportbot"
+                      or bot.get("is_bot") is not True or type(bot.get("id")) is not int):
+                  raise ValueError("Saved token does not identify the expected bot.")
+              webhook = api("getWebhookInfo")
+              if not isinstance(webhook, dict) or webhook.get("url") != "":
+                  raise ValueError("An active/unknown webhook prevents this check. Its configuration was not changed.")
+              # No offset, allowed_updates, deleteWebhook or drop_pending_updates: preserve state.
+              updates = api("getUpdates", {"timeout": 0, "limit": 100})
+              channel_id = choose_channel(updates, owner_id, bot["id"], time.time())
+              chat = api("getChat", {"chat_id": channel_id})
+              bot_member = api("getChatMember", {"chat_id": channel_id, "user_id": bot["id"]})
+              owner_member = api("getChatMember", {"chat_id": channel_id, "user_id": owner_id})
+              verify_members(chat, bot_member, owner_member, channel_id, bot["id"], owner_id)
+              title = chat.get("title", "Unnamed channel")
+              title = " ".join(title.split())[:160] if isinstance(title, str) else "Unnamed channel"
+              title = title.replace(token, "[redacted]")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                  summary.write("## Telegram channel verified\n\n")
+                  summary.write("Channel: " + html.escape(title) + "\n\n")
+                  summary.write("Bot: @NSEMorningReportbot; Post Messages permission: confirmed.\n\n")
+                  summary.write("Channel owner matches the existing private-chat setup.\n\n")
+                  summary.write(f"Channel ID: `{channel_id}`\n\n")
+                  summary.write("Save this ID as a NEW repository secret named TELEGRAM_CHANNEL_ID. Keep TELEGRAM_CHAT_ID unchanged.\n\n")
+                  summary.write("No message was sent. Existing webhook/update filtering and pending-update acknowledgements were not changed.\n")
+              print("CHANNEL_SETUP_RESULT " + json.dumps({"status": "PASS", "channel_title": title, "bot_can_post": True, "owner_verified": True}))
+          
+          
+          if __name__ == "__main__":
+              try:
+                  main()
+              except ValueError as exc:
+                  raise SystemExit(str(exc)) from None
+              except Exception:
+                  raise SystemExit("Channel setup failed; sensitive error details are suppressed.") from None
+          PY
