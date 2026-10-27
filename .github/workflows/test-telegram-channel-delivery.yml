@@ -2,11 +2,6 @@ name: Test Telegram channel PDF delivery
 
 "on":
   workflow_dispatch:
-  push:
-    branches:
-      - codex/telegram-channel-delivery
-    paths:
-      - .github/workflows/test-telegram-channel-delivery.yml
 
 permissions: {}
 
