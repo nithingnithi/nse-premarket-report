@@ -1,0 +1,543 @@
+{
+  "mode": "CAPTURED_DATA_DRY_RUN",
+  "report_date": "2026-10-27",
+  "cutoff_IST": "2026-10-27T07:45:00+05:30",
+  "target_delivery_IST": "08:00",
+  "news_window_start_exclusive_IST": "2026-10-26T19:45:00+05:30",
+  "provider_completed_sessions": {
+    "NSE": [
+      "2026-10-26",
+      "2026-10-23",
+      "2026-10-22",
+      "2026-10-21",
+      "2026-10-19"
+    ],
+    "NFO": [
+      "2026-10-26",
+      "2026-10-23"
+    ]
+  },
+  "futures": [
+    {
+      "check": "NIFTY futures",
+      "instrument_key": "NSE_FO|48704",
+      "expiry": "2026-10-27",
+      "latest_date": "2026-10-26",
+      "previous_date": "2026-10-23",
+      "daily_observations": [
+        {
+          "date": "2026-10-26",
+          "bar_start_IST": "2026-10-26T00:00:00+05:30",
+          "close": "22774.8",
+          "volume": 6211595,
+          "oi_raw": 11222250
+        },
+        {
+          "date": "2026-10-23",
+          "bar_start_IST": "2026-10-23T00:00:00+05:30",
+          "close": "22576.6",
+          "volume": 5761080,
+          "oi_raw": 11323390
+        }
+      ],
+      "latest_session_close_IST": "2026-10-26T15:40:00+05:30",
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "BANKNIFTY futures",
+      "instrument_key": "NSE_FO|48699",
+      "expiry": "2026-10-27",
+      "latest_date": "2026-10-26",
+      "previous_date": "2026-10-23",
+      "daily_observations": [
+        {
+          "date": "2026-10-26",
+          "bar_start_IST": "2026-10-26T00:00:00+05:30",
+          "close": "54395.0",
+          "volume": 915510,
+          "oi_raw": 1273470
+        },
+        {
+          "date": "2026-10-23",
+          "bar_start_IST": "2026-10-23T00:00:00+05:30",
+          "close": "54242.2",
+          "volume": 795960,
+          "oi_raw": 1455990
+        }
+      ],
+      "latest_session_close_IST": "2026-10-26T15:40:00+05:30",
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    }
+  ],
+  "fii_positions": [
+    {
+      "date": "2026-10-26",
+      "provider_time_stamp_ms": 1792953000000,
+      "long_contracts": 46522,
+      "short_contracts": 323627,
+      "net_contracts": -277105,
+      "long_divided_by_short": "0.1437519119232944099225342756",
+      "ratio_note": "long / short"
+    },
+    {
+      "date": "2026-10-23",
+      "provider_time_stamp_ms": 1792693800000,
+      "long_contracts": 36986,
+      "short_contracts": 317169,
+      "net_contracts": -280183,
+      "long_divided_by_short": "0.1166129098367116584533797439",
+      "ratio_note": "long / short"
+    }
+  ],
+  "cash": [
+    {
+      "check": "FII cash",
+      "observations": [
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "9324.9",
+          "sell_raw": "10787.39",
+          "net_raw": "-1462.49"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "14445.54",
+          "sell_raw": "13557.89",
+          "net_raw": "887.65"
+        },
+        {
+          "date": "2026-10-22",
+          "provider_time_stamp_ms": 1792607400000,
+          "buy_raw": "13627.54",
+          "sell_raw": "17086.24",
+          "net_raw": "-3458.70"
+        },
+        {
+          "date": "2026-10-21",
+          "provider_time_stamp_ms": 1792521000000,
+          "buy_raw": "17003.9",
+          "sell_raw": "15981.58",
+          "net_raw": "1022.32"
+        },
+        {
+          "date": "2026-10-19",
+          "provider_time_stamp_ms": 1792348200000,
+          "buy_raw": "11240.64",
+          "sell_raw": "12389.28",
+          "net_raw": "-1148.64"
+        }
+      ],
+      "units": "Raw provider amounts. Docs label INR; no crore conversion or scoring until independently reconciled."
+    },
+    {
+      "check": "DII cash",
+      "observations": [
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "17389.57",
+          "sell_raw": "14780.0",
+          "net_raw": "2609.57"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "19232.31",
+          "sell_raw": "15996.95",
+          "net_raw": "3235.36"
+        },
+        {
+          "date": "2026-10-22",
+          "provider_time_stamp_ms": 1792607400000,
+          "buy_raw": "16242.83",
+          "sell_raw": "13351.51",
+          "net_raw": "2891.32"
+        },
+        {
+          "date": "2026-10-21",
+          "provider_time_stamp_ms": 1792521000000,
+          "buy_raw": "14931.57",
+          "sell_raw": "13317.25",
+          "net_raw": "1614.32"
+        },
+        {
+          "date": "2026-10-19",
+          "provider_time_stamp_ms": 1792348200000,
+          "buy_raw": "14781.31",
+          "sell_raw": "11580.12",
+          "net_raw": "3201.19"
+        }
+      ],
+      "units": "Raw provider amounts. Docs label INR; no crore conversion or scoring until independently reconciled."
+    }
+  ],
+  "global": [
+    {
+      "name": "GIFT NIFTY",
+      "last_price": 22680,
+      "provider_net_change_raw": -93.5,
+      "last_trade_IST": "2026-10-26T22:56:55+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "DOW JONES",
+      "last_price": 52370.36,
+      "provider_net_change_raw": 134.2,
+      "last_trade_IST": "2026-10-26T22:57:04+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "S&P",
+      "last_price": 7707.27,
+      "provider_net_change_raw": 62.59,
+      "last_trade_IST": "2026-10-26T22:57:04+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "US Tech 100",
+      "last_price": 26255.01,
+      "provider_net_change_raw": 278.67,
+      "last_trade_IST": "2026-10-26T22:57:15+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "HANG SENG",
+      "last_price": 23211.81,
+      "provider_net_change_raw": 118.43,
+      "last_trade_IST": "2026-10-26T13:53:32+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "NIKKEI 225",
+      "last_price": 62444.07,
+      "provider_net_change_raw": -249.09,
+      "last_trade_IST": "2026-10-26T11:59:57+05:30",
+      "freshness": "UNVERIFIED: independent market calendar and timestamp semantics not reconciled.",
+      "identity_note": "Provider display name retained; contract, benchmark construction and units not independently reconciled.",
+      "observed_at_IST": "2026-10-26T22:57:28.351196+05:30"
+    },
+    {
+      "name": "USD INR",
+      "last_closed_minute_price": 95.21,
+      "bar_start_IST": "2026-10-26T15:42:00+05:30",
+      "freshness": "UNVERIFIED: candle timestamp marks the bar start, not an independent last-trade timestamp.",
+      "identity_note": "Identity is bound to the requested provider key; candle responses do not repeat the instrument key. Benchmark construction and units remain unverified.",
+      "observed_at_IST": "2026-10-26T22:57:28.720595+05:30"
+    },
+    {
+      "name": "Oil (Brent)",
+      "last_closed_minute_price": 116.25,
+      "bar_start_IST": "2026-10-26T22:54:00+05:30",
+      "freshness": "UNVERIFIED: candle timestamp marks the bar start, not an independent last-trade timestamp.",
+      "identity_note": "Identity is bound to the requested provider key; candle responses do not repeat the instrument key. Benchmark construction and units remain unverified.",
+      "observed_at_IST": "2026-10-26T22:57:29.103612+05:30"
+    },
+    {
+      "name": "Oil (WTI)",
+      "last_closed_minute_price": 102.04,
+      "bar_start_IST": "2026-10-26T22:54:00+05:30",
+      "freshness": "UNVERIFIED: candle timestamp marks the bar start, not an independent last-trade timestamp.",
+      "identity_note": "Identity is bound to the requested provider key; candle responses do not repeat the instrument key. Benchmark construction and units remain unverified.",
+      "observed_at_IST": "2026-10-26T22:57:29.603420+05:30"
+    }
+  ],
+  "vix": {
+    "check": "India VIX quote",
+    "status": "PASS",
+    "last_price": 17.16,
+    "quote_time_IST": "2026-10-26T22:14:23+05:30",
+    "last_trade_time_IST": "2026-10-26T16:00:00+05:30"
+  },
+  "options": [
+    {
+      "check": "Nifty option chain",
+      "status": "PASS",
+      "expiry": "2026-10-27",
+      "strike_rows": 144,
+      "complete_OI_strikes": 144,
+      "missing_OI_fields": 0,
+      "contracts_absent_from_chain": 0,
+      "lot_sizes": [
+        65
+      ],
+      "sample_quotes": [
+        {
+          "status": "PASS",
+          "last_price": 108.2,
+          "quote_time_IST": "2026-10-26T22:14:24+05:30",
+          "last_trade_time_IST": "2026-10-26T15:39:59+05:30"
+        },
+        {
+          "status": "PASS",
+          "last_price": 85.8,
+          "quote_time_IST": "2026-10-26T22:14:24+05:30",
+          "last_trade_time_IST": "2026-10-26T15:39:59+05:30"
+        }
+      ]
+    },
+    {
+      "check": "Bank Nifty option chain",
+      "status": "PASS",
+      "expiry": "2026-10-27",
+      "strike_rows": 161,
+      "complete_OI_strikes": 161,
+      "missing_OI_fields": 0,
+      "contracts_absent_from_chain": 0,
+      "lot_sizes": [
+        30
+      ],
+      "sample_quotes": [
+        {
+          "status": "PASS",
+          "last_price": 225.1,
+          "quote_time_IST": "2026-10-26T22:14:25+05:30",
+          "last_trade_time_IST": "2026-10-26T15:39:59+05:30"
+        },
+        {
+          "status": "PASS",
+          "last_price": 245.9,
+          "quote_time_IST": "2026-10-26T22:14:25+05:30",
+          "last_trade_time_IST": "2026-10-26T15:39:59+05:30"
+        }
+      ]
+    }
+  ],
+  "calendar": {
+    "checked_at_IST": "2026-10-27T00:06:59.267938+05:30",
+    "cutoff_IST": "2026-10-26T07:45:00+05:30",
+    "horizon_days": 7,
+    "checks": [
+      {
+        "check": "BEA JSON",
+        "status": "PASS",
+        "records": 196,
+        "latest_date": "2027-12-22",
+        "upcoming_selected": 2,
+        "source": "https://apps.bea.gov/API/signup/release_dates.json",
+        "duplicates_removed": 10,
+        "file_last_updated_raw": "2026-10-22T12:48:27.656675",
+        "last_updated_timezone": "Unspecified in this field; not used as an independent freshness timestamp."
+      },
+      {
+        "check": "BEA ICS",
+        "status": "PASS",
+        "records": 168,
+        "latest_date": "2027-12-22",
+        "upcoming_selected": 2,
+        "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+        "duplicates_removed": 0,
+        "documented_timezone_aliases": {}
+      },
+      {
+        "check": "BLS ICS",
+        "status": "PASS",
+        "records": 313,
+        "latest_date": "2026-12-30",
+        "upcoming_selected": 4,
+        "source": "https://www.bls.gov/schedule/news_release/bls.ics",
+        "duplicates_removed": 0,
+        "documented_timezone_aliases": {
+          "US-Eastern": "America/New_York"
+        }
+      },
+      {
+        "check": "Reviewed schedules",
+        "status": "PASS",
+        "scope": "Selected MoSPI, RBI, Federal Reserve and BLS events; source revisions are not fetched automatically.",
+        "reviewed_on": "2026-10-26",
+        "review_due_on": "2026-11-02",
+        "coverage_through": "2026-11-09"
+      },
+      {
+        "check": "BEA format reconciliation",
+        "status": "PASS",
+        "mismatched_series": [],
+        "comparison": [
+          {
+            "series": "Gross Domestic Product",
+            "json_times_IST": [
+              "2026-10-29T18:00:00+05:30"
+            ],
+            "ics_times_IST": [
+              "2026-10-29T18:00:00+05:30"
+            ],
+            "matched_ics_titles": [
+              "GDP (Advance Estimate), 3rd Quarter 2026"
+            ]
+          },
+          {
+            "series": "Personal Income and Outlays",
+            "json_times_IST": [
+              "2026-10-29T18:00:00+05:30"
+            ],
+            "ics_times_IST": [
+              "2026-10-29T18:00:00+05:30"
+            ],
+            "matched_ics_titles": [
+              "Personal Income and Outlays, September 2026"
+            ]
+          }
+        ]
+      }
+    ],
+    "access_validation": "PASS",
+    "calendar_coverage": "PARTIAL",
+    "events": [
+      {
+        "agency": "MoSPI",
+        "title": "All India Index of Industrial Production (IIP)",
+        "source": "https://www.mospi.gov.in/uploads/documents/releaseCalender/1779709510470-ADVANCE%20RELEASE%20CALENDAR%202026-27%20Updated%2025.05.2026.pdf",
+        "date_IST": "2026-10-28",
+        "scheduled_IST": null,
+        "time_precision": "date_only",
+        "time_display_IST": "N/A",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A",
+        "source_version": "Updated 25 May 2026, page 4",
+        "qualification": "Planned date only. The PDF moves holiday releases to the next working day and permits revisions. No release time or holiday adjustment is inferred.",
+        "provenance": "Reviewed official schedule snapshot; automatic revision discovery is not implemented.",
+        "reviewed_on": "2026-10-26",
+        "review_due_on": "2026-11-02",
+        "coverage_through": "2026-11-09"
+      },
+      {
+        "agency": "BLS",
+        "title": "Metropolitan Area Employment and Unemployment (Monthly)",
+        "source": "https://www.bls.gov/schedule/news_release/bls.ics",
+        "date_IST": "2026-10-28",
+        "scheduled_IST": "2026-10-28T19:30:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "19:30",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      },
+      {
+        "agency": "BLS",
+        "title": "Quarterly Data Series on Business Employment Dynamics",
+        "source": "https://www.bls.gov/schedule/news_release/bls.ics",
+        "date_IST": "2026-10-28",
+        "scheduled_IST": "2026-10-28T19:30:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "19:30",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      },
+      {
+        "agency": "Federal Reserve",
+        "title": "FOMC scheduled announcement",
+        "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+        "date_IST": "2026-10-28",
+        "scheduled_IST": "2026-10-28T23:30:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "23:30",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A",
+        "meeting_start": "2026-10-27",
+        "meeting_end": "2026-10-28",
+        "provenance": "Reviewed official schedule snapshot; automatic revision discovery is not implemented.",
+        "reviewed_on": "2026-10-26",
+        "review_due_on": "2026-11-02",
+        "coverage_through": "2026-11-09"
+      },
+      {
+        "agency": "BEA",
+        "title": "Gross Domestic Product",
+        "source": "https://apps.bea.gov/API/signup/release_dates.json",
+        "date_IST": "2026-10-29",
+        "scheduled_IST": "2026-10-29T18:00:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "18:00",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      },
+      {
+        "agency": "BEA",
+        "title": "Personal Income and Outlays",
+        "source": "https://apps.bea.gov/API/signup/release_dates.json",
+        "date_IST": "2026-10-29",
+        "scheduled_IST": "2026-10-29T18:00:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "18:00",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      },
+      {
+        "agency": "BLS",
+        "title": "Consumer Expenditures",
+        "source": "https://www.bls.gov/schedule/news_release/bls.ics",
+        "date_IST": "2026-10-29",
+        "scheduled_IST": "2026-10-29T19:30:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "19:30",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      },
+      {
+        "agency": "BLS",
+        "title": "Employment Cost Index",
+        "source": "https://www.bls.gov/schedule/news_release/bls.ics",
+        "date_IST": "2026-10-30",
+        "scheduled_IST": "2026-10-30T18:00:00+05:30",
+        "time_precision": "timestamp",
+        "time_display_IST": "18:00",
+        "forecast": "N/A",
+        "previous": "N/A",
+        "actual": "N/A"
+      }
+    ],
+    "limitations": "Selected sources/events only. Reviewed snapshots require renewal; date-only events are planned dates with time N/A. Forecast, previous and actual values are unavailable. Calendar alerts do not change the six signals or final bias."
+  },
+  "sources": [
+    {
+      "id": "flows",
+      "url": "https://github.com/nithingnithi/nse-premarket-report/actions/runs/40365801399",
+      "scope": "Authenticated GitHub Actions access/schema/completed-session coverage; not independent exchange or unit verification."
+    },
+    {
+      "id": "quotes",
+      "url": "https://github.com/nithingnithi/nse-premarket-report/actions/runs/40361970131",
+      "scope": "Results read from completed GitHub job logs; authenticated quote and option-chain access/schema checks only. Full raw API responses were not logged. Report readiness, whole-chain freshness, OI units/baselines and 07:45 IST operation remain unverified."
+    },
+    {
+      "id": "global",
+      "url": "https://github.com/nithingnithi/nse-premarket-report/actions/runs/40368775767",
+      "scope": "Access/schema only; independent source/units and morning availability not verified."
+    },
+    {
+      "id": "calendar",
+      "url": "https://github.com/nithingnithi/nse-premarket-report/actions/runs/40379282618",
+      "scope": "Selected official schedules; reviewed snapshots, partial coverage."
+    }
+  ],
+  "news": {
+    "status": "N/A",
+    "reason": "Saved news probes used the 25-26 Oct window, not this report 26-27 Oct window. No current-window articles retained; never interpreted as no news."
+  },
+  "review": {
+    "mode": "Codex review in this chat; no unattended model API",
+    "notes": [
+      "Both captured futures comparisons show rising price and falling OI: short covering under the draft rule. This classification does not predict the next session.",
+      "Aggregate FII index-futures positions remain net short. This is broad index exposure, not a Nifty-only position or a directional guarantee.",
+      "Four signals are unavailable. Old global snapshots and unresolved source semantics prevent treating this as an actionable morning report."
+    ]
+  }
+}

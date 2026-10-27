@@ -1,0 +1,144 @@
+name: Deliver captured-data dry-run report
+
+"on":
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: captured-data-report-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver-dry-run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Deliver reviewed dry-run PDF and verify downloaded hash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.request
+          import uuid
+          
+          PDF_BASE64 = "JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUgo+PgplbmRvYmoKMiAwIG9iago8PAovQmFzZUZvbnQgL0hlbHZldGljYSAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjEgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iagozIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhLUJvbGQgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YyIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKNCAwIG9iago8PAovQ29udGVudHMgMTcgMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgMTYgMCBSIC9SZXNvdXJjZXMgPDwKL0ZvbnQgMSAwIFIgL1Byb2NTZXQgWyAvUERGIC9UZXh0IC9JbWFnZUIgL0ltYWdlQyAvSW1hZ2VJIF0KPj4gL1JvdGF0ZSAwIC9UcmFucyA8PAoKPj4gCiAgL1R5cGUgL1BhZ2UKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vZ2l0aHViLmNvbS9uaXRoaW5nbml0aGkvbnNlLXByZW1hcmtldC1yZXBvcnQvYWN0aW9ucy9ydW5zLzQwMzY1ODAxMzk5KQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDIyMS44ODk4IDIyOC41MzYgMjMxLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vZ2l0aHViLmNvbS9uaXRoaW5nbml0aGkvbnNlLXByZW1hcmtldC1yZXBvcnQvYWN0aW9ucy9ydW5zLzQwMzYxOTcwMTMxKQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDIxMS44ODk4IDI1Ny44OTYgMjIxLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vZ2l0aHViLmNvbS9uaXRoaW5nbml0aGkvbnNlLXByZW1hcmtldC1yZXBvcnQvYWN0aW9ucy9ydW5zLzQwMzY4Nzc1NzY3KQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDIwMS44ODk4IDI0Ny4yMTYgMjExLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjggMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vZ2l0aHViLmNvbS9uaXRoaW5nbml0aGkvbnNlLXByZW1hcmtldC1yZXBvcnQvYWN0aW9ucy9ydW5zLzQwMzc5MjgyNjE4KQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDE5MS44ODk4IDIwOC45NzYgMjAxLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjkgMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vd3d3Lm1vc3BpLmdvdi5pbi91cGxvYWRzL2RvY3VtZW50cy9yZWxlYXNlQ2FsZW5kZXIvMTc3OTcwOTUxMDQ3MC1BRFZBTkNFJTIwUkVMRUFTRSUyMENBTEVOREFSJTIwMjAyNi0yNyUyMFVwZGF0ZWQlMjAyNS4wNS4yMDI2LnBkZikKPj4gL0JvcmRlciBbIDAgMCAwIF0gL1JlY3QgWyA0OCAxODEuODg5OCAyMjguMDggMTkxLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjEwIDAgb2JqCjw8Ci9BIDw8Ci9TIC9VUkkgL1R5cGUgL0FjdGlvbiAvVVJJIChodHRwczovL3d3dy5mZWRlcmFscmVzZXJ2ZS5nb3YvbmV3c2V2ZW50cy8yMDI2LW9jdG9iZXIuaHRtKQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDE3MS44ODk4IDIyOC45NiAxODEuODg5OCBdIC9TdWJ0eXBlIC9MaW5rIC9UeXBlIC9Bbm5vdAo+PgplbmRvYmoKMTEgMCBvYmoKPDwKL0EgPDwKL1MgL1VSSSAvVHlwZSAvQWN0aW9uIC9VUkkgKGh0dHBzOi8vYXBwcy5iZWEuZ292L0FQSS9zaWdudXAvcmVsZWFzZV9kYXRlcy5qc29uKQo+PiAvQm9yZGVyIFsgMCAwIDAgXSAvUmVjdCBbIDQ4IDE2MS44ODk4IDE1NS4xNDQgMTcxLjg4OTggXSAvU3VidHlwZSAvTGluayAvVHlwZSAvQW5ub3QKPj4KZW5kb2JqCjEyIDAgb2JqCjw8Ci9BIDw8Ci9TIC9VUkkgL1R5cGUgL0FjdGlvbiAvVVJJIChodHRwczovL2FwcHMuYmVhLmdvdi9BUEkvc2lnbnVwL3JlbGVhc2VfZGF0ZXMuanNvbikKPj4gL0JvcmRlciBbIDAgMCAwIF0gL1JlY3QgWyA0OCAxNTEuODg5OCAxNzMuMzkyIDE2MS44ODk4IF0gL1N1YnR5cGUgL0xpbmsgL1R5cGUgL0Fubm90Cj4+CmVuZG9iagoxMyAwIG9iago8PAovQW5ub3RzIFsgNSAwIFIgNiAwIFIgNyAwIFIgOCAwIFIgOSAwIFIgMTAgMCBSIDExIDAgUiAxMiAwIFIgXSAvQ29udGVudHMgMTggMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgMTYgMCBSIC9SZXNvdXJjZXMgPDwKL0ZvbnQgMSAwIFIgL1Byb2NTZXQgWyAvUERGIC9UZXh0IC9JbWFnZUIgL0ltYWdlQyAvSW1hZ2VJIF0KPj4gL1JvdGF0ZSAwIAogIC9UcmFucyA8PAoKPj4gL1R5cGUgL1BhZ2UKPj4KZW5kb2JqCjE0IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgMTYgMCBSIC9UeXBlIC9DYXRhbG9nCj4+CmVuZG9iagoxNSAwIG9iago8PAovQXV0aG9yIChOU0UgTW9ybmluZyBSZXBvcnQpIC9DcmVhdGlvbkRhdGUgKEQ6MjAyNjEwMjcwODMwMzYrMDUnMDAnKSAvQ3JlYXRvciAoXCh1bnNwZWNpZmllZFwpKSAvS2V5d29yZHMgKCkgL01vZERhdGUgKEQ6MjAyNjEwMjcwODMwMzYrMDUnMDAnKSAvUHJvZHVjZXIgKFJlcG9ydExhYiBQREYgTGlicmFyeSAtIFwob3BlbnNvdXJjZVwpKSAKICAvU3ViamVjdCAoXCh1bnNwZWNpZmllZFwpKSAvVGl0bGUgKE5TRSBtb3JuaW5nIHJlcG9ydCAtIGNhcHR1cmVkLWRhdGEgZHJ5IHJ1bikgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iagoxNiAwIG9iago8PAovQ291bnQgMiAvS2lkcyBbIDQgMCBSIDEzIDAgUiBdIC9UeXBlIC9QYWdlcwo+PgplbmRvYmoKMTcgMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggMjYxMAo+PgpzdHJlYW0KR2IhU24+QmYnciZxOVNZVygvNEZBQDpqYC1bXCdMKixwRnJDc0hXN2cvOCRxI2A1SytZZzpGUDpLPCR0XF40aEpdbUtIYChgVWh1WDZRYk5XaW8kLEAsbTBFaG9QclhFV1lGNSUlJS1cLjU5Kj0/dWNjOlA3b0hnNmNccjtNWDMlZj5eVWItJUxaWmRHPmB0U0pFdCZSSSxEPyVjayM+RSVjYGM/QE0sYG1bPVdRTlsvcEdnIl09MzI/b2JzV05NKWBmb2teWj4wJ1AnVy9FJC9Ib0lHbVcmKV41I00uS2k/SkA+cSNJJ11ARCVtR2VBUTNHU1gvI0htY2ksdHAyMixcZixQTV1nPjRjKTonZlFUXDVbKThQQlQjIUVII0ZHRjBaO1ZvdTBUPChdNktPQDZTcDZDVzJMKVVzcSgzTkNQMlVYL2czbCIhaG5ZdGZNUUUxMlYkbz9xcUQ1aUwoJGwvMUpvLl9TYTdZdVVeN3RhSXBrO0ROUS0lW3VFQ3NnTj5tSkNKJWxgKlpoNE8/MGJPcWZgNCtXMUdJPTFeZzxYQ15qSyVGMnA9UFxyaCRzZyI5QCNqPXNGWjA2Yi5GMy4oaDgpUFpLV0N0JlZwY14+QEYrTmcqYCk6WEtOQnMsNlJxWUMtKXRUPyk+Lmc4OjI4PSVdSmxlRC5dXC9jZmgwWUk5ISM+KE9nKHEwPEwvTExVbFoya2xUazQmIWc3VC9qQWROazNVVSZeKFRDTERyKU02M0RHUE07aGZvPUg+VTFEQjoxNGk9PiRLWTlRSHI7MGg7SFooXmxLXFsiLGslNlVXXFtQLDZcNz4oYiQtWV8+KnVyRDEhKVUkbXFJUlFqZlpRKmxpSSxcO15hbEhhbyUzQSJBTC5wSVRIcC1scHBKXGg8cyFHSFlkRFVlRic4ZlxnN01GclhJV18iO3RZTEwvYEFjS0FoVy0iVVNCYiF1KE9Oal03KVk9OGVYczdiPjRsTWdxR1g1VzopVzRAa1RPanNFWE83MnQ0cFciUj9CVmMjLCVuI3Q4JEEpLSlFLUdRV2xeQUQlJiRGcVZJIy5lK1wrZmo1VVorVG8rTnI/SWFhYUJTNE9FckZKO0FdIV1KRmZxckM/L2oiKjM2L0lOL2NHKS44Rz4kO0A7TDFfXStUQUglKkReWyNYSWpobltjV3NjPT5uSDUnT1Q+LU8rUzJaWkFwL1VjN1RHInU/Um5CSj4/bS4tKCoodGRTKF1YckIuZFYxdGM9UGgyLyJSKkhaXD5YQVtNIVVlQC0wWT5AX21zYDktaEIpI0txS0BkTDNYLT1cPWdOTGtdUkZlOHIzcmJZdGYiUEYyInReW2xjbCxZazc7XFxQNkthSj5uajJNMjguQEBEWFwiZVYjUFYzTSVeK11VKzonKWFNZ1M2K2I9Pk81SipBZERodUAuREVQOD8ha1JiZykrVCRSJDk9a1xpLypFWEUvU1U5Jm91Q21KJlwmXnMnJ2tfZ0Y9QTxHcF4oIWQ4QSokUiNBYSc6bUtNal0qa19YQmguVVMoND81TUpLW2hUcSlvKmgsOjRQP1BWSTA3NW9fZG9sLUEwR18yaWFJJFsvK1hrW1stLGtdRG5bLU5dcDBwWmEvWFhgb0s9XTI+Jk9oPU5aK11FPztaOyVFPExOI2BIXylQMClqQGQiRyNKW2BWcDovSFguTCEwclQ2NV1pKFRWLkwjbjNUPWZSOlsqV2FqIjRIZyRuUSs+KV03bDcybVBiTUBPTlVeZThWUk8wOEBCZUZGQE82aWRTdUdQYmAwQnMuP0BfcFwtPydTZG9JUk1NRDlBQm9TM2o3ZkNJdW8wMzo/c3RHQk4hV0pka0cvRl1QPSI+JjFfJCUxYy1ebFhoKUs6VjBgdF5gXSxAOlpkOCxqSk9mRGpNZjEsNjFVRmdkTHBmVkI4PWRaWjZRNkU4KmdWNEE5QHUtWmlhUDtvPGo/Y0ZzQHIpcCROI2ddM2ItUGpUPWdhP2cuS0tlYyQnM0BqXC5zPUYiI2QraEQ6SDlOM2NMUTxBMmk6ZnVlSiZVJE1mWVhlbTRxSkNzVkY/K0xrKUNpYUMiK2tHTVIxV0E+UUReOWNXUTNQQmAtNGxjVls0NyQzQDE4bSxnJyoxSEJANC8nQXNuczdbQVw7Uz9IPzwiMUVSQyUvOTJbYlMzQlNLJCVHWytOOEFyTUxjT00nQEpRSkNbajgqQHRYaC9GLk8rSygsPmhmNGAmNGhQLVJnTmg6XTZscWIjTlVJKVdGXixDLlglKmdsRl08cTs6UWVpXzk+O19DRGxLV29BPERGMj9DO2NUUWpjV2JNQWxsbTYnMTBKMScjTkpyJkkjNzQhUTdrXFwxUWFvXSheWCtqU20lL05MImg6IU5dcXJbJkNJLHAuUFxpXCFWb0hMVihOMiYtblM8UThCUmcuamI7XGJNRy8tNywoQ3I+PU5YK2I7T0E9ZSZEUlNZRiJQTl0iRlZmIU4+UmtdYCVGYXFcP104US9vaVVROydQb1gpN1pJS2dkMTgoNmVRdXJmLlIxI0l0NyhoKW9PRCUxOWZUJUpLOkA9XDUoV1VsK1xcc3ErdDYvQ01JSC04KyFSSmckZ0YyYEhTbiFiO1MkbD8nYi8yaGNPYWVpUENhXSFpRy08aStNJW5iOjVsbjglIURxQVZ1S1ZpdVZLR15nLDUwMWA8IiQ0MEE4bGdUaCNecVBJQ2lFZlAlLkFkTF1fJ3JQYXAyVStATU1EUnRARmBXLGk6LS9SMDJJXUVwXkw/aTJfLjkwMUdFbm9PLChoPSNnVSpjQT06Z3NwQ29bUWdSWV50Y1gtMEM4JEleP1RaZ0chVitUSmxDIVZXMTZPJSU3J09OPmBkPz8nZllvTVpqcFBHLmNAKXByaXNjbipUQWpAQUw7Q1srTUgnUGNuYGcxTGFSQVhNWW5HWERGa20yOFhmPEktLVs7QEsudGFsO2lkbGFURkZoMm8rLEhlKCYhQVIlLVktR3U2W2RfIltPJlNUPyYsJWo1STVMOFRhPks1MlxcMGpvNHBuPGg+YWtYZF9WWThiWSonYUFwU0pHYEwkTjNxYSs2KjtVTEhgTitFSTRrTnEkPF4yS1g7OD5dIyc9aChGYlo2J1BnTnJYPlVaS0RhZ2M/ZmBFWkJxSm1pcCxjTS9ZJyw1S21EJjQnaWNka0khNkpybS9fcjgxMyNbKGUzKW1OUkc5by1LcTNQSUdzNEIkUzlPPSNdL21AVCpOImRbTEU6RHUtNmNDWnU/Omc+Nj5eUS5GIWFgI1tMaHJsS11BV0M5YyZfZls1Z0Q7ZSdlTWRkQnJfL05EQFlRRUcnO1IrJUIvSCJtZlsvLj0lIVlaL2w8LXJnKzRcYDpPb0QoQHAqZHNjXDJCKzpqLW9rJTZKO10maGxmRWtmJyFobyplU0tVIVFcSjA4aVdLOTkwTyRJSSpUIlRqPV5McllAQH4+ZW5kc3RyZWFtCmVuZG9iagoxOCAwIG9iago8PAovRmlsdGVyIFsgL0FTQ0lJODVEZWNvZGUgL0ZsYXRlRGVjb2RlIF0gL0xlbmd0aCAyODcxCj4+CnN0cmVhbQpHYiFTbz5CQVEtJnE5U1lmVl5OQzlwI1InPS5hbERSUkQ9OEFOSEFSKyh1Om1mTUk1LlAnL3MvSWYubHEuKWkvUT1EbSVaUzEoZnNNOzMkI0RtOzVkJHNcMWFtV1opQjMxPkQ+YGRpJnJjJTVdISYkcmBhM25wdGMwQiw3dEczaF0nbik6VT5FIy09QHEtRjRnI0xBI0siRyg0Vy1qXSc7JC5qTztZYUFySUcuOC43OFJQcjQwRmlAMjJAblJnIydFU2paWCteZmFWaTxnWV5eXWQjQClcRV9MTE46WEpCUzJEbjNzWWFsT1xbR3B1XUVYMGRQU1JTMSVeUyJiOFtmJkEnRXI8OU8iJDFhNTpebC5SI05QXlsiJU0ldHVRaT1cLTw/WylGTVg8QW1qZyQxXVlgbichcGEiSE9fWj4hPUU0Y2ImXW1rPzBqSidkImpDdTw7T2Y/SkZKXEsxRmY+JlBaM0E9ZUJwQ2tqLSVlaHFnMjZAS09hST9BM101RSg0T0IpKyxQQlUscE87SVNpOUhXYl1WSEFdby1KKCZCbGd1N1BXYj8tRFUuTDg4a2dmQF44KltabnFxTVIoSyRVQygoSHAwcWdJcjJoQ0hMaV00WVBuKztXZSNtLjZjZDVWVjU6aiNqK2IvTWI7SlZVZkBtYDMvcmktV11wKF9bYWdwRmBPc1F1KGpRJj8pMyM8JVlvKWlHVU9XKCotUz9jMC8iMCNcS2BHKmxFPk9CQG86SmtrNG8xNEJyNkxHayxrTjw/Nm51MkJIbFI+Q109OiY1MmhaTCZyXyk/bV10PmBYNTlvWD1HZU9nYjcvOkprNFcyTEdkW21FKkZyW1Y5VWlTXDpCK2hsTygxMFVrRThsTj0/UCZQcmRTYSVAVitXT1YwYW8oYSZORXJiR0E1Xz82WkxFYGU5NUJVLC0+YTwhQm9JblNgYVw3alUrMz5eTyVuIzNWaUkhKz9JcGYpU2VQL1NCWUghXl0pVCRCRUYqNS51W2FzSkw1PipNLlsoMjMxX1E9aylNLT1FXiVLPm02SUdwSStWUF8wJkhaaWFpM2A8Z1ZyZ1c+MGlLQFcuOClZalAhcT0tZDJfQyFRMWtRVDQscUhja2pdcj5vO1RiakFXbTFIIUJmazNsMWZhV1Z1anVULl1mTEU8Ql4wL0JsOWtKKDJxWiFwS11rWCEjZnJBY2guTFhMU05YNT91KiJBLi1OXG9TZjE8ai5WL2FKYUczVUFMPSZbMzJZXW9ZXGVXXko2cDZgTSgmNWRpVWUrbTpUKkFaX0Z1KGxjZjBvOlooPFReOC1iTWVnVjBTXmI2NitaL2ByI3BEWzNeRWA2UlcuYyghL2cpRyROdGI2MWVjL2A2OyJKc0ojNk0kTmJnZ1hVWD1GLDotM2l1bSQrL2VgZy1fdD09MFZINnMoOV0uMUljMVQ5JiJObzRTZThmKFBlUjY1R1ZxL3BgV1c0aSVlUycxXyZMb0drJm8zN0ktKXNGNTN0UFVjIV0oNCRibFQ2JzlZYGJcUWU8QHJoaVRPJEQjSFBlNE4hR0huVCE9Vls4ZCkpVkxCcGpeWiFMR1xyTmczXyM6XFRbSSFgPW9HPW8/aGdfRW1gSTErZTZxZjVGPF5tT3QmZzZVMTxFLUc3MiY3ZEJBLTg8TSo2XGZVYFN0YDsuO01mODBVM2JeaC8vcUFGOVNDVk1Ja0tJTzomOyNYbXREUDlUKDIyMj4pJEVVO2w7ImFYJmJPOzJaTE9mKFNvRURQLl9pZWwndD1oL0FPWURKMigtaFs9WEcwJ1tlNzA1VWxBOkhRZmhbJFhnPGY7XVJYPSt0c0ZvZTpfZEchcW0wST48YDlCJktWNUc7NEBhY1kka1pOblU1TzgrI1QsSzVLM3VVTzxaPkxFbEBfX1xvPk5McygmWFRjNj5GIi4kbTpTZEJDTC1IOThbRiJDLW4iTj00bk10dDhoYDFSRmRIOWtiN1IzV1NOaDdkYkA1ISM0SkdwL0ciZzIiRVhhZmFBUSk1KzFgMU1NRzNNYXNAbTo5YGI1ayNTLlsqb2NdW2QoIkZdcCw9L0srLG5RMSRYWHNLZnNkO2swbEorUFU1bVtlJzxHUUJqJmJdQ2E4UF8yJUA+KzooLS9rM0NVNV9vUURMcCYpbjxwUTBUYW9STVJIXzAlImVecS5eWD1pZDtZTSZML2hEVkEmK1ZWTD05K2VLaSMhT25qXCNbLy1JOWYybV1yYmFnUHNcZSxcTWcrVmtldTsqdVd0Oi00TiJpM1RrZj5RP0VbQy4jWSNwXWEoX1VyKTJmQyZAa2dHdEk6W0oyRjJEMWdRUUc/Vm1lTCFWXSRKYkJuV19pTFtydF9qU0NUcUhVKHMrN0deNF1cXFs6JCgjZm5SNlooRlgySFRwO2ZpJWlePFZkb0k4K0FacWxTQC07MCklTjVkImgrQ1hXNzg5W0ZMbUhmOFFqQlknXjszdWZLLUxbcTFpRy40X1xoSEVpMyE5bzomcFVTaWolJXFrI1pVLkBwLSJBWFdEaTVmdFxcZkVuMSdkdEFZMEQ+SXJpWWIwMnJUWipMK2FWOm1jc2VkV2gzYy4la0ZhQE1sXiRXZWFUU0tMJ2lVQ2xnUmtmSGpSaGQ5Z0V0S1hPcT0yKjlxXS1dSEVTUyI+Lzc0JTIxJEQ/L19mLm09bHJXOXMkOj9eX2VmTCYlVic8MnQiZClOJC5xXmxabVktZ2tbMUIwU0lBcmAvXVVzbiZZaS8rQWlca1RXS28vT2xgLnJvVShkOUZuMUpTKHRnLkE2OHUuT2MkZzZcJmdcJnQvK1UlZkZLdSosazo8VlZAITg/VEwqJ242N1M+b2RyZWx1OiIhc1M4KkEvXjw7S1t1SztHdVVLTEVhajRnPF4hUG5NcixTSSsoZmwxSilfayU7OyQyQyknY1trXkZcQT8mXz1BKj5XdVxbOGNKPzs5amBNSjMjOE5yPGxxYERwMyJFXmw+R0xcdVIqSVklWlRrSHJNTmYtJWFWJT1rbUpLPEZiUVRqWDtUWlZDUU07YThPQE1LZjlgS2RRKCxzKjImdFxgaEx0N0hFTnIqMzxBbUluV2ltXS9aPVRAL2dBQCpFSVY3dSFfXk9eP3U4WHBdK01kUlA3SEwwSG4nLDthTDNdQ09ONFhAPWJISG04SSFJKVNTWjs0KitWWE9HQC1mZUkhNzE8U243bF1uczpCSnJIPEdPbD1GVkduZWZaMWsxQjsyYDkqR25DK0QsajArOzxWSC0oI1ksKSlCYkwjMDlPO145ZWpEZy8hW0wnYmknPzdecTBaL0k5PWRgWE1APStAMUVuS3VBXjtLM0JTT2xobDkuYEUjJjhmY3FhWTQ+UC8yOyJxWUNEJXBVanJzViZsMHEtKmZSUD07alJxVkZnYDhlVDwtYVZDSDolXXIlZlhsLE5ASm88L3NYWjhYSj5JS3JhXiZLZmxcUlIrcXNaJUUtV1chUHAicSZJYTBTJipNX0xzTHFHPFIzRT9sXF1wVnQwOiJFK19LRWRaJDNeI2xfUGNTWFtPYF0kW2E+Uys2YD0+Uk1EbmZnO1dBN0dHby9ASiY7bDEpWkQpKGIqTlc4U3BEUWApaC5ZUzdnODMzJkk0UUpdRjRWU1ZmTWtbKGxBKCpsS1tTISJubTJrTFJTQT0rRmAuZi44SkgrKUAnaEEuXnJWJVUtSC5vJkJNUzolN0RJJyw5K3BdYHJsRiZpVXBNQ1c6ZWdRWWVoYjNWSzc7WlAtJmY+LWMkaF9TUDxdZGo8KHViJCgyKTpObG5xaUVeXiZKLDUtXSE2fj5lbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCAxOQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDEwMiAwMDAwMCBuIAowMDAwMDAwMjA5IDAwMDAwIG4gCjAwMDAwMDAzMjEgMDAwMDAgbiAKMDAwMDAwMDUyNiAwMDAwMCBuIAowMDAwMDAwNzQ4IDAwMDAwIG4gCjAwMDAwMDA5NzAgMDAwMDAgbiAKMDAwMDAwMTE5MiAwMDAwMCBuIAowMDAwMDAxNDE0IDAwMDAwIG4gCjAwMDAwMDE2OTYgMDAwMDAgbiAKMDAwMDAwMTg5OSAwMDAwMCBuIAowMDAwMDAyMDk1IDAwMDAwIG4gCjAwMDAwMDIyOTEgMDAwMDAgbiAKMDAwMDAwMjU2MCAwMDAwMCBuIAowMDAwMDAyNjMwIDAwMDAwIG4gCjAwMDAwMDI5NDUgMDAwMDAgbiAKMDAwMDAwMzAxMiAwMDAwMCBuIAowMDAwMDA1NzE0IDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPDlhMzAxZjgyYjUyMjcyMDc2MGJhMTQwOWMxZGQzOWNjPjw5YTMwMWY4MmI1MjI3MjA3NjBiYTE0MDljMWRkMzljYz5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gMTUgMCBSCi9Sb290IDE0IDAgUgovU2l6ZSAxOQo+PgpzdGFydHhyZWYKODY3NwolJUVPRgo="
+          PDF_SHA256 = "73e7570be520c2af91b842b6b3de2e1248b467ad624a5bc8fc2f3495400055ca"
+          FILENAME = "nse-morning-dry-run-2026-10-27.pdf"
+          
+          def stop(message):
+              raise SystemExit(message)
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          def main():
+              if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
+                  stop("Repeat attempts are blocked to avoid duplicate PDF delivery. Check Telegram first.")
+              token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+              chat_text = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+              if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
+                  stop("TELEGRAM_BOT_TOKEN is missing or malformed.")
+              if not re.fullmatch(r"[1-9][0-9]*", chat_text):
+                  stop("TELEGRAM_CHAT_ID must contain your positive numeric private-chat ID.")
+              chat_id = int(chat_text)
+              pdf = base64.b64decode(PDF_BASE64, validate=True)
+              if not pdf.startswith(b"%PDF-") or hashlib.sha256(pdf).hexdigest() != PDF_SHA256:
+                  stop("The embedded test PDF failed its integrity check.")
+              opener = urllib.request.build_opener(NoRedirect())
+          
+              def api(method, parameters=None, body=None, content_type="application/json"):
+                  if body is None:
+                      body = json.dumps(parameters or {}).encode("utf-8")
+                  request = urllib.request.Request(
+                      "https://api.telegram.org/bot" + token + "/" + method,
+                      data=body, headers={"Content-Type": content_type}, method="POST",
+                  )
+                  try:
+                      with opener.open(request, timeout=30) as response:
+                          payload = json.load(response)
+                  except Exception:
+                      if method == "sendDocument":
+                          stop("Upload result is uncertain. Check Telegram before rerunning; no automatic retry was attempted.")
+                      stop("Telegram request failed. Sensitive URLs, responses and exception details are suppressed.")
+                  if not isinstance(payload, dict) or payload.get("ok") is not True:
+                      stop("Telegram rejected a request. Sensitive response details are suppressed.")
+                  return payload.get("result")
+          
+              bot = api("getMe")
+              if (not isinstance(bot, dict) or bot.get("is_bot") is not True
+                      or not isinstance(bot.get("username"), str)
+                      or bot["username"].lower() != "nsemorningreportbot"):
+                  stop("The saved token does not belong to @NSEMorningReportbot.")
+              chat = api("getChat", {"chat_id": chat_id})
+              if (not isinstance(chat, dict) or chat.get("type") != "private"
+                      or type(chat.get("id")) is not int or chat["id"] != chat_id):
+                  stop("The saved chat ID did not resolve to the expected private chat.")
+          
+              boundary = "nse_pdf_" + uuid.uuid4().hex
+              chunks = []
+              for name, value in [
+                  ("chat_id", chat_text),
+                  ("caption", "DRY RUN - Report 27 Oct 2026, saved 26 Oct data. Score 0; available 2/6; range -4 to +4. Insufficient data for final bias. Please open the two-page PDF."),
+              ]:
+                  chunks.append((
+                      "--" + boundary + "\r\n"
+                      + 'Content-Disposition: form-data; name="' + name + '"\r\n\r\n'
+                      + value + "\r\n"
+                  ).encode("utf-8"))
+              chunks.append((
+                  "--" + boundary + "\r\n"
+                  + 'Content-Disposition: form-data; name="document"; filename="' + FILENAME + '"\r\n'
+                  + "Content-Type: application/pdf\r\n\r\n"
+              ).encode("ascii"))
+              chunks.extend([pdf, ("\r\n--" + boundary + "--\r\n").encode("ascii")])
+              sent = api("sendDocument", body=b"".join(chunks),
+                         content_type="multipart/form-data; boundary=" + boundary)
+              if not isinstance(sent, dict):
+                  stop("The PDF upload did not return a valid message. Check Telegram before rerunning.")
+              sent_chat = sent.get("chat")
+              document = sent.get("document")
+              if (not isinstance(sent_chat, dict) or sent_chat.get("id") != chat_id
+                      or sent_chat.get("type") != "private"
+                      or not isinstance(document, dict)
+                      or not isinstance(document.get("file_id"), str) or not document["file_id"]
+                      or type(sent.get("message_id")) is not int or sent["message_id"] <= 0):
+                  stop("The upload response did not confirm a document in the expected private chat. Check Telegram before rerunning.")
+          
+              file = api("getFile", {"file_id": document["file_id"]})
+              path = file.get("file_path") if isinstance(file, dict) else None
+              if (not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_./-]+", path)
+                      or path.startswith("/") or ".." in path.split("/")):
+                  stop("Telegram accepted the upload but file verification could not proceed. Check Telegram before rerunning.")
+              try:
+                  request = urllib.request.Request("https://api.telegram.org/file/bot" + token + "/" + path)
+                  with opener.open(request, timeout=30) as response:
+                      downloaded = response.read(len(pdf) + 1)
+              except Exception:
+                  stop("Telegram accepted the PDF but the verification download failed. Check Telegram before rerunning.")
+              if hashlib.sha256(downloaded).hexdigest() != PDF_SHA256:
+                  stop("Telegram accepted a document but the downloaded bytes did not match the test PDF.")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                  summary.write("## Captured-data dry-run PDF delivery verified\n\n")
+                  summary.write("Telegram accepted the PDF in the configured private chat.\n\n")
+                  summary.write("The downloaded copy matches the original PDF by SHA-256.\n\n")
+                  summary.write("Please open the file in Telegram and confirm readability. This does not yet test fresh data collection, unattended AI or scheduling.\n")
+              print("PDF upload and downloaded-file integrity verified. Confirm receipt and readability in Telegram.")
+          
+          if __name__ == "__main__":
+              try:
+                  main()
+              except SystemExit:
+                  raise
+              except Exception:
+                  stop("The dry-run delivery failed. Sensitive error details are suppressed; check Telegram before rerunning.")
+          
+          PY
