@@ -7,6 +7,10 @@ name: Collect NSE F&O archive
         description: 'Completed session date YYYY-MM-DD (before today); no holiday fallback'
         required: true
         type: string
+      report_date:
+        description: 'Report date YYYY-MM-DD; earliest expiry on/after this date is selected'
+        required: true
+        type: string
 permissions: {}
 concurrency:
   group: nse-fo-archive
@@ -19,6 +23,7 @@ jobs:
       - name: Collect and validate archive
         env:
           DATA_DATE: ${{ inputs.data_date }}
+          REPORT_DATE: ${{ inputs.report_date }}
         shell: bash
         run: |
           python3 - <<'PYTHON'
@@ -86,7 +91,8 @@ jobs:
                   raise ValueError('No target contracts')
               return rows
           
-          def snapshot(rows, symbol, day):
+          def snapshot(rows, symbol, day, report_day=None):
+              report_day = report_day or day + dt.timedelta(days=1)
               selected = [r for r in rows if r['TckrSymb'] == symbol]
               if not selected:
                   raise ValueError('Symbol absent')
@@ -118,10 +124,30 @@ jobs:
                   walls = {s: [str(k) for k, v in sorted(values.items()) if v == max(values.values())]
                            if values and max(values.values()) > 0 else [] for s, values in sides.items()}
                   summaries.append({'expiry': expiry, 'paired_strikes': complete,
+                      'call_strike_count': len(sides['CE']), 'put_strike_count': len(sides['PE']),
+                      'call_only_strikes': [str(x) for x in sorted(sides['CE'].keys() - sides['PE'].keys())],
+                      'put_only_strikes': [str(x) for x in sorted(sides['PE'].keys() - sides['CE'].keys())],
                       'call_oi_raw': totals['CE'], 'put_oi_raw': totals['PE'],
                       'pcr_raw_oi': str(Decimal(totals['PE']) / Decimal(totals['CE'])) if complete and totals['CE'] else None,
                       'max_call_oi_strikes': walls['CE'], 'max_put_oi_strikes': walls['PE']})
-              return {'symbol': symbol, 'status': 'COLLECTED' if groups and futures and all(x['paired_strikes'] for x in summaries) else 'PARTIAL',
+              eligible = [x for x in summaries if date(x['expiry']) >= report_day]
+              selected_option = eligible[0] if eligible else None
+              eligible_futures = sorted((x for x in futures if date(x['expiry']) >= report_day), key=lambda x: x['expiry'])
+              selected_future = eligible_futures[0] if eligible_futures else None
+              ready = selected_option is not None and selected_option['paired_strikes'] and selected_future is not None
+              reasons = []
+              if selected_option is None:
+                  reasons.append('No option expiry on or after report date')
+              elif not selected_option['paired_strikes']:
+                  reasons.append('Selected option expiry has unmatched call/put strikes')
+              if selected_future is None:
+                  reasons.append('No futures expiry on or after report date')
+              return {'symbol': symbol, 'status': 'COLLECTED' if ready else 'PARTIAL',
+                      'reasons': reasons, 'report_date': report_day.isoformat(),
+                      'selection_policy': 'Probe only: earliest returned expiry on or after report date, independently for options and futures; no weekly label inferred',
+                      'selected_option_expiry': selected_option['expiry'] if selected_option else None,
+                      'selected_futures_expiry': selected_future['expiry'] if selected_future else None,
+                      'unmatched_strike_expiries': [x['expiry'] for x in summaries if not x['paired_strikes']],
                       'oi_unit': 'UNVERIFIED_RAW', 'options_by_expiry': summaries,
                       'futures_by_expiry': futures, 'source_rows': selected}
           
@@ -135,6 +161,10 @@ jobs:
                      'data': []}
               try:
                   day = date(os.environ.get('DATA_DATE', ''))
+                  report_day = date(os.environ.get('REPORT_DATE', ''))
+                  if report_day <= day:
+                      raise ValueError('Report date must be later than data date')
+                  out['report_date'] = report_day.isoformat()
                   if day >= dt.datetime.now(IST).date():
                       raise ValueError('Choose a completed session before today')
                   out['data_date'] = day.isoformat()
@@ -147,7 +177,7 @@ jobs:
                   out['archive_sha256'] = hashlib.sha256(payload).hexdigest()
                   for symbol in ('NIFTY', 'BANKNIFTY'):
                       try:
-                          out['data'].append(snapshot(rows, symbol, day))
+                          out['data'].append(snapshot(rows, symbol, day, report_day))
                       except ValueError as exc:
                           out['data'].append({'symbol': symbol, 'status': 'UNAVAILABLE', 'error': str(exc)})
                   out['status'] = 'COLLECTED' if all(r['status'] == 'COLLECTED' for r in out['data']) else 'PARTIAL'
@@ -162,6 +192,12 @@ jobs:
               summary = '## NSE F&O archive probe\n\nStatus: ' + out['status'] + '\n\n' + out['scope'] + '\n'
               for item in out['data']:
                   summary += '\n- ' + item['symbol'] + ': ' + item['status']
+                  if 'selected_option_expiry' in item:
+                      summary += '; selected option expiry: ' + str(item['selected_option_expiry'])
+                      summary += '; selected futures expiry: ' + str(item['selected_futures_expiry'])
+                      summary += '; unmatched strike expiries: ' + ', '.join(item['unmatched_strike_expiries'])
+                      for reason in item['reasons']:
+                          summary += '\n  - ' + reason
               if 'error' in out:
                   summary += '\n\n' + out['error']
               if os.environ.get('GITHUB_STEP_SUMMARY'):
@@ -175,7 +211,7 @@ jobs:
           PYTHON
       - name: Save snapshot and diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, Node.js 24
         with:
           name: nse-fo-archive-${{ github.run_id }}-${{ github.run_attempt }}
           path: out/snapshot.json
