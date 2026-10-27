@@ -2,6 +2,11 @@ name: Set up Telegram channel
 
 "on":
   workflow_dispatch:
+  push:
+    branches:
+      - codex/telegram-channel-setup
+    paths:
+      - .github/workflows/setup-telegram-channel.yml
 
 permissions: {}
 
