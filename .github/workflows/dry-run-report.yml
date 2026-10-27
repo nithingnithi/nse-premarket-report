@@ -2,11 +2,6 @@ name: Deliver captured-data dry-run report
 
 "on":
   workflow_dispatch:
-  push:
-    branches:
-      - codex/captured-report-dry-run
-    paths:
-      - .github/workflows/dry-run-report.yml
 
 permissions: {}
 
