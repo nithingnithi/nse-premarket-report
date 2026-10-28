@@ -309,7 +309,7 @@ def daily_bars(data, now):
     return bars
 
 
-def futures_check(api, name, underlying, now, dates, closes):
+def futures_check(api, name, underlying, now, dates, closes, observed_now=None):
     contract = search_future(api, name, underlying, now.date())
     key = contract["instrument_key"]
     key_path = urllib.parse.quote(key, safe="")
@@ -328,7 +328,7 @@ def futures_check(api, name, underlying, now, dates, closes):
     if any(date not in bars for date in dates):
         raise CheckFailure("Daily price/OI observations do not cover both latest completed NFO sessions.")
     quote_data = api.get("/market-quote/quotes", {"instrument_key": key})
-    checked_quote = quote(quote_data, key, now)
+    checked_quote = quote(quote_data, key, observed_now or now)
     if checked_quote["status"] != "PASS":
         raise CheckFailure("Futures quote timestamp is unavailable.")
     row = next(row for row in quote_data.values() if isinstance(row, dict) and row.get("instrument_token") == key)
@@ -465,7 +465,7 @@ def attempt(results, label, run):
         results.append({"check": label, "status": "FAIL", "reason": "Unexpected response/schema; sensitive details suppressed."})
 
 
-def run_checks(api, now):
+def run_checks(api, now, observed_now=None):
     results = []
     try:
         dates, closes, checked = completed_sessions(api, now)
@@ -478,7 +478,7 @@ def run_checks(api, now):
         if api.auth_failed:
             results.append({"check": name + " futures", "status": "SKIPPED", "reason": "Earlier request was rejected."})
             continue
-        attempt(results, name + " futures", lambda: futures_check(api, name, underlying, now, dates["NFO"], closes))
+        attempt(results, name + " futures", lambda: futures_check(api, name, underlying, now, dates["NFO"], closes, observed_now=observed_now))
     if api.auth_failed:
         results.append({"check": "Institutional flows", "status": "SKIPPED", "reason": "Earlier request was rejected."})
         return results

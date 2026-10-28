@@ -84,7 +84,7 @@ def main():
             compact['trading_day']='OPEN' if 'NSE' in session and 'NFO' in session else 'CLOSED'
         else:compact['trading_day']='UNVERIFIED'
         if compact['trading_day']=='OPEN':
-            results=attempt(lambda:flows.run_checks(api,cutoff));full['flows']=results
+            results=attempt(lambda:flows.run_checks(api,cutoff,observed_now=now));full['flows']=results
             compact['flows']=compact_flows(results)
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:

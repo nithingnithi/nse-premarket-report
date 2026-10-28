@@ -11,6 +11,6 @@ Repository: nithingnithi/nse-premarket-report, main. Target delivery 08:00 IST; 
    schema_version:1; report_date:"YYYY-MM-DD"; snapshot_sha256:"pointer hash"; summary:"..."; alerts:["...","...","..."]; mcp_context:[] or [{source:"nse-bhavcopy",data_date:"exact previous session",text:"..."}]. No other keys.
 7. Check latest delivery run once. Report verified success only after its success/ledger SENT; otherwise say queued, failed or uncertain. No automatic resend. No Telegram calls from Codex: GitHub handles it.
 
-Token budget policy: one pointer + one compact snapshot; at most one MCP response; no raw contracts; review <=1600 total words is NOT required—the bounds above are characters. Keep user updates <=3 lines and silent on closed/unchanged days.
+Token budget policy: one pointer + one compact snapshot; at most one MCP response; no raw contracts; The text bounds above are characters, not words. Keep user updates <=3 lines and silent on closed/unchanged days.
 
 Outstanding: reconcile OI/close semantics and cash units; verify full contract coverage, independent calendar and provider redistribution rights; set VIX threshold explicitly; validate rollover/session freshness, morning availability and delivery timing. Existing draft FII net-sign signal is retained; five unresolved signals remain missing. No scoring changes or new API key.

@@ -44,3 +44,18 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):reserve(p,{},fail)
             self.assertTrue(p.exists())
 if __name__=='__main__':unittest.main()
+
+class RetrievalClockTests(unittest.TestCase):
+    def test_quote_clock_does_not_change_selected_sessions(self):
+        from unittest.mock import Mock,patch
+        from integrated.adapters import flows
+        cutoff=dt.datetime(2026,10,28,7,45,tzinfo=IST)
+        retrieval=cutoff+dt.timedelta(minutes=8)
+        dates=['2026-10-27','2026-10-26'];key='synthetic'
+        api=Mock();api.get.return_value={'x':{'instrument_token':key,'oi':100}}
+        bars={d:{'close':'100','oi_raw':100} for d in dates}
+        q={'status':'PASS','last_trade_time_IST':'2026-10-27T15:30:00+05:30'}
+        with patch.object(flows,'search_future',return_value={'instrument_key':key}),patch.object(flows,'daily_bars',return_value=bars),patch.object(flows,'quote',return_value=q) as quote:
+            result=flows.futures_check(api,'synthetic','synthetic',cutoff,dates,{('NFO',dates[0]):'synthetic'},observed_now=retrieval)
+        self.assertEqual(quote.call_args.args[2],retrieval)
+        self.assertEqual(result['latest_date'],'2026-10-27')
