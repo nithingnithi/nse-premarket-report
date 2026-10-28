@@ -1,0 +1,382 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-10-28",
+  "cutoff_IST": "2026-10-28T07:45:00+05:30",
+  "collected_at_IST": "2026-10-28T10:29:19.958807+05:30",
+  "mode": "PARTIAL_TRIAL",
+  "source_run": "40635353107",
+  "options": {
+    "NIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-03",
+      "strikes": 104,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "1.054551131977178436258418433",
+      "pcr_current": "1.008244156348000387960298729",
+      "pcr_direction": "DOWN",
+      "call_walls": [
+        "23500.00"
+      ],
+      "put_walls": [
+        "20050.00"
+      ],
+      "max_pain": [
+        "22750.00"
+      ],
+      "call_oi_change": 38996620,
+      "put_oi_change": 37399895
+    },
+    "BANKNIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-23",
+      "strikes": 153,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "0.8775063130810225199748273362",
+      "pcr_current": "0.8869693777175020226654947818",
+      "pcr_direction": "UP",
+      "call_walls": [
+        "57000.00"
+      ],
+      "put_walls": [
+        "55000.00"
+      ],
+      "max_pain": [
+        "55500.00"
+      ],
+      "call_oi_change": 2776200,
+      "put_oi_change": 2533680
+    }
+  },
+  "global": [
+    {
+      "name": "HANG SENG",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "DOW JONES",
+      "value": 52406.83,
+      "asof": "2026-10-28T01:29:54+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "USD INR",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "Oil (Brent)",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "S&P",
+      "value": 7744.04,
+      "asof": "2026-10-28T01:29:54+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "GIFT NIFTY",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "US Tech 100",
+      "value": 26500.12,
+      "asof": "2026-10-28T01:29:54+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "Oil (WTI)",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "NIKKEI 225",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "All India Index of Industrial Production (IIP)",
+      "agency": "MoSPI",
+      "date_IST": "2026-10-28",
+      "scheduled_IST": null,
+      "source": "https://www.mospi.gov.in/uploads/documents/releaseCalender/1779709510470-ADVANCE%20RELEASE%20CALENDAR%202026-27%20Updated%2025.05.2026.pdf"
+    },
+    {
+      "title": "Metropolitan Area Employment and Unemployment (Monthly)",
+      "agency": "BLS",
+      "date_IST": "2026-10-28",
+      "scheduled_IST": "2026-10-28T19:30:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    },
+    {
+      "title": "Quarterly Data Series on Business Employment Dynamics",
+      "agency": "BLS",
+      "date_IST": "2026-10-28",
+      "scheduled_IST": "2026-10-28T19:30:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    },
+    {
+      "title": "FOMC scheduled announcement",
+      "agency": "Federal Reserve",
+      "date_IST": "2026-10-28",
+      "scheduled_IST": "2026-10-28T23:30:00+05:30",
+      "source": "https://www.federalreserve.gov/newsevents/2026-october.htm"
+    },
+    {
+      "title": "Gross Domestic Product",
+      "agency": "BEA",
+      "date_IST": "2026-10-29",
+      "scheduled_IST": "2026-10-29T18:00:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    },
+    {
+      "title": "Personal Income and Outlays",
+      "agency": "BEA",
+      "date_IST": "2026-10-29",
+      "scheduled_IST": "2026-10-29T18:00:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    }
+  ],
+  "news": [
+    {
+      "title": "Oil rises after attack on Saudi Arabian refinery reignites supply concerns",
+      "url": "https://www.business-standard.com/markets/commodities/oil-rises-after-attack-on-saudi-arabian-refinery-reignites-supply-concerns-126102800104_1.html",
+      "published_IST": "2026-10-28T07:43:45.000000+05:30"
+    },
+    {
+      "title": "Global Markets React to Israeli Election Deadlock and Central Bank Policy Shifts",
+      "url": "https://www2.stockmarketwatch.com/stock-market-news/global-markets-react-to-israeli-election-deadlock-and-central-bank-policy-shifts/73722/",
+      "published_IST": "2026-10-28T07:38:19.000000+05:30"
+    },
+    {
+      "title": "Dollar holds gains ahead of Fed policy signal, RBNZ decision",
+      "url": "https://economictimes.indiatimes.com/markets/forex/forex-news/dollar-holds-gains-ahead-of-fed-policy-signal-rbnz-decision/articleshow/135249316.cms",
+      "published_IST": "2026-10-28T07:34:47.000000+05:30"
+    },
+    {
+      "title": "Stocks to watch October 28: Infy, Midhani, Choice Intl, Kothari Industrial, Subros, Gulf Oil, Exide, Steamhouse",
+      "url": "https://www.thehindubusinessline.com/markets/buzzing-stocks-infy-midhani-choice-intl-kothari-industrial-subros-gulf-oil-exide-steamhouse/article71634126.ece",
+      "published_IST": "2026-10-28T07:25:30.000000+05:30"
+    },
+    {
+      "title": "L&T profit jumps 33% on strong order inflows",
+      "url": "https://economictimes.indiatimes.com/markets/stocks/earnings/lt-profit-jumps-33-on-strong-order-inflows/articleshow/135249127.cms",
+      "published_IST": "2026-10-28T07:22:37.000000+05:30"
+    },
+    {
+      "title": "Jio to make trading debut after record $3.2 billion IPO",
+      "url": "https://www.thehindubusinessline.com/markets/jio-to-make-trading-debut-after-record-32-billion-ipo/article71634118.ece",
+      "published_IST": "2026-10-28T07:15:17.000000+05:30"
+    }
+  ],
+  "vix_flag": "UNKNOWN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": -1,
+      "fii_cash": null,
+      "dii_cash": null
+    },
+    "score": -1,
+    "available": 1,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls",
+      "fii_cash",
+      "dii_cash"
+    ],
+    "missing_count": 5,
+    "score_range": [
+      -6,
+      4
+    ],
+    "possible_categories": [
+      "BEARISH",
+      "NEUTRAL",
+      "BULLISH"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "limitations": [
+    "Raw OI/cash units and independent exchange calendar reconciliation pending.",
+    "Draft trial mapping retained; no added MCP/VIX points.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "OPEN",
+  "flows": [
+    {
+      "check": "NIFTY futures",
+      "status": "FAIL",
+      "reason": "Provider timestamp is in the future."
+    },
+    {
+      "check": "BANKNIFTY futures",
+      "status": "FAIL",
+      "reason": "Provider timestamp is in the future."
+    },
+    {
+      "check": "FII index-futures positions",
+      "status": "PASS",
+      "scope": "Aggregate NSE index futures; not Nifty-only or Bank-Nifty-only.",
+      "observations": [
+        {
+          "date": "2026-10-27",
+          "provider_time_stamp_ms": 1793039400000,
+          "long_contracts": 33588,
+          "short_contracts": 254645,
+          "net_contracts": -221057,
+          "long_divided_by_short": "0.1319012743230772251565905476",
+          "ratio_note": "long / short"
+        },
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "long_contracts": 46522,
+          "short_contracts": 323627,
+          "net_contracts": -277105,
+          "long_divided_by_short": "0.1437519119232944099225342756",
+          "ratio_note": "long / short"
+        }
+      ]
+    },
+    {
+      "check": "FII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-10-27",
+          "provider_time_stamp_ms": 1793039400000,
+          "buy_raw": "24517.65",
+          "sell_raw": "20277.26",
+          "net_raw": "4240.39"
+        },
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "9324.9",
+          "sell_raw": "10787.39",
+          "net_raw": "-1462.49"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "14445.54",
+          "sell_raw": "13557.89",
+          "net_raw": "887.65"
+        },
+        {
+          "date": "2026-10-22",
+          "provider_time_stamp_ms": 1792607400000,
+          "buy_raw": "13627.54",
+          "sell_raw": "17086.24",
+          "net_raw": "-3458.70"
+        },
+        {
+          "date": "2026-10-21",
+          "provider_time_stamp_ms": 1792521000000,
+          "buy_raw": "17003.9",
+          "sell_raw": "15981.58",
+          "net_raw": "1022.32"
+        }
+      ],
+      "net_sum_last_3_raw": "3665.55",
+      "net_sum_last_5_raw": "1229.17",
+      "units": "Raw provider amounts. Docs label INR; no crore conversion or scoring until independently reconciled."
+    },
+    {
+      "check": "DII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-10-27",
+          "provider_time_stamp_ms": 1793039400000,
+          "buy_raw": "15702.74",
+          "sell_raw": "16952.77",
+          "net_raw": "-1250.03"
+        },
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "17389.57",
+          "sell_raw": "14780.0",
+          "net_raw": "2609.57"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "19232.31",
+          "sell_raw": "15996.95",
+          "net_raw": "3235.36"
+        },
+        {
+          "date": "2026-10-22",
+          "provider_time_stamp_ms": 1792607400000,
+          "buy_raw": "16242.83",
+          "sell_raw": "13351.51",
+          "net_raw": "2891.32"
+        },
+        {
+          "date": "2026-10-21",
+          "provider_time_stamp_ms": 1792521000000,
+          "buy_raw": "14931.57",
+          "sell_raw": "13317.25",
+          "net_raw": "1614.32"
+        }
+      ],
+      "net_sum_last_3_raw": "4594.90",
+      "net_sum_last_5_raw": "9100.54",
+      "units": "Raw provider amounts. Docs label INR; no crore conversion or scoring until independently reconciled."
+    }
+  ],
+  "completed_sessions": {
+    "NSE": [
+      "2026-10-27",
+      "2026-10-26",
+      "2026-10-23",
+      "2026-10-22",
+      "2026-10-21"
+    ],
+    "NFO": [
+      "2026-10-27",
+      "2026-10-26"
+    ]
+  },
+  "archive_sources": [
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261027_F_0000.csv.zip",
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261026_F_0000.csv.zip"
+  ],
+  "futures_validation": "WITHHELD: archive/provider OI and close semantics require reconciliation",
+  "vix": {
+    "status": "UNAVAILABLE",
+    "reason": "Not a confirmed previous-session observation"
+  },
+  "news_status": "PARTIAL",
+  "news_note": "Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.",
+  "calendar_status": "PARTIAL",
+  "collection_status": "PARTIAL",
+  "timing": "LATE_COLLECTION"
+}
