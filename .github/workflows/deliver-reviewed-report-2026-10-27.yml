@@ -1,6 +1,9 @@
 name: Deliver reviewed report 2026-10-27
 
 "on":
+  push:
+    branches: [codex/deliver-reviewed-report-20261027]
+    paths: [.github/workflows/deliver-reviewed-report-2026-10-27.yml]
   workflow_dispatch:
 
 permissions: {}
