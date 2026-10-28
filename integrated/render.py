@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 from decimal import Decimal,InvalidOperation
 import datetime as dt
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
@@ -28,12 +30,19 @@ def stamp(v):
     except (ValueError,TypeError):return text(v)
 def render(s,r,path):
     Path(path).parent.mkdir(parents=True,exist_ok=True)
+    for font_path in ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/System/Library/Fonts/Supplemental/Georgia.ttf'):
+        if Path(font_path).exists():
+            font=TTFont('CashCurrency',font_path)
+            if 0x20B9 in font.face.charToGlyph:
+                pdfmetrics.registerFont(font);break
+    else:raise ValueError('A font supporting the rupee symbol is required')
     c=canvas.Canvas(str(path),pagesize=(595,842));c.setTitle('NSE Morning Brief | '+s['report_date'])
     def rect(x,top,w,h,fill,radius=0):
         c.setFillColor(HexColor(fill));c.setStrokeColor(HexColor(fill))
         c.roundRect(x,top-h,w,h,radius,fill=1,stroke=0)
     def p(value,x,top,w,size=9,color=INK,bold=False,maxh=None):
         style=ParagraphStyle('p',fontName='Helvetica-Bold' if bold else 'Helvetica',fontSize=size,leading=size*1.3,textColor=HexColor(color))
+        value=value.replace('₹','<font name="CashCurrency">₹</font>')
         para=Paragraph(value,style);_,h=para.wrap(w,800)
         if maxh and h>maxh:
             # Never silently crop or shrink text to an unreadable size.
@@ -113,7 +122,7 @@ def render(s,r,path):
         p(text(a['check']),36,top,151,8,INK,True)
         obs=a.get('observations',[]);v=obs[0] if obs else {}
         if 'index-futures' in a['check']:detail='L '+number(v.get('long_contracts'),0)+' / S '+number(v.get('short_contracts'),0)+' / net '+number(v.get('net_contracts'),0)+' / L:S '+number(v.get('long_divided_by_short'),3)
-        elif 'cash' in a['check']:detail='3D '+number(a.get('net_sum_last_3_raw'))+' / 5D '+number(a.get('net_sum_last_5_raw'))+' (raw units)'
+        elif 'cash' in a['check']:detail='3D (₹ cr) '+number(a.get('net_sum_last_3_raw'))+' / 5D (₹ cr) '+number(a.get('net_sum_last_5_raw'))
         else:detail='Score withheld / source consistency pending'
         p(text(a['status']),190,top,53,7.2,MUTED);p(detail,247,top,312,7.8,maxh=15)
     if not f:p('N/A / Flow observations unavailable.',36,345,520,8.5,MUTED)

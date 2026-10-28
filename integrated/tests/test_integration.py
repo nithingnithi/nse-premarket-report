@@ -59,3 +59,31 @@ class RetrievalClockTests(unittest.TestCase):
             result=flows.futures_check(api,'synthetic','synthetic',cutoff,dates,{('NFO',dates[0]):'synthetic'},observed_now=retrieval)
         self.assertEqual(quote.call_args.args[2],retrieval)
         self.assertEqual(result['latest_date'],'2026-10-27')
+
+class CashSignalTests(unittest.TestCase):
+    def row(self,nets):
+        days=['2026-10-27','2026-10-26','2026-10-23','2026-10-22','2026-10-21']
+        return {'check':'FII cash','status':'PASS','observations':[{'date':d,'buy_raw':str(max(n,0)),'sell_raw':str(max(-n,0)),'net_raw':str(n)} for d,n in zip(days,nets)],'net_sum_last_5_raw':str(sum(nets))},days
+    def test_signs(self):
+        from integrated.collect import cash_signal
+        for nets,expected in [([1]*5,1),([-1]*5,-1),([0]*5,0)]:
+            row,days=self.row(nets);self.assertEqual(cash_signal(row,days),expected)
+    def test_invalid_coverage_and_values(self):
+        from integrated.collect import cash_signal
+        for change in ('missing','duplicate','stale','nan','wrong_sum','wrong_net','fail'):
+            row,days=self.row([1]*5)
+            if change=='missing':row['observations'].pop()
+            if change=='duplicate':row['observations'][1]['date']=days[0]
+            if change=='stale':row['observations'][0]['date']='2026-10-20'
+            if change=='nan':row['observations'][0]['buy_raw']='NaN'
+            if change=='wrong_sum':row['net_sum_last_5_raw']='0'
+            if change=='wrong_net':row['observations'][0]['net_raw']='0'
+            if change=='fail':row['status']='FAIL'
+            with self.subTest(change=change):self.assertIsNone(cash_signal(row,days))
+    def test_independent_signals_no_offset(self):
+        from integrated.collect import cash_signals
+        fii,days=self.row([-1]*5);dii,_=self.row([2]*5);dii['check']='DII cash'
+        self.assertEqual(cash_signals([fii,dii],days),{'fii_cash':-1,'dii_cash':1})
+    def test_duplicate_provider_row_unavailable(self):
+        from integrated.collect import cash_signals
+        row,days=self.row([1]*5);self.assertIsNone(cash_signals([row,row],days)['fii_cash'])

@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
@@ -52,12 +52,41 @@ def option_summary(old,new,symbol):
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
     return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
 
+def cash_signal(row, sessions):
+    """User-approved rule: sign of five completed-session net; no DII offset."""
+    try:
+        if row.get('status')!='PASS' or len(sessions)!=5 or len(set(sessions))!=5:
+            return None
+        if sessions!=sorted(sessions,reverse=True):return None
+        observations=row['observations']
+        if [x['date'] for x in observations]!=sessions:return None
+        nets=[]
+        for x in observations:
+            buy,sell,net=(Decimal(str(x[k])) for k in ('buy_raw','sell_raw','net_raw'))
+            if not all(v.is_finite() for v in (buy,sell,net)) or min(buy,sell)<0 or buy-sell!=net:return None
+            nets.append(net)
+        total=sum(nets)
+        if Decimal(str(row['net_sum_last_5_raw']))!=total:return None
+        return (total>0)-(total<0)
+    except (KeyError,TypeError,ValueError,InvalidOperation):return None
+
+def cash_signals(results,sessions):
+    signals={}
+    for label,key in [('FII cash','fii_cash'),('DII cash','dii_cash')]:
+        matches=[r for r in results if r.get('check')==label]
+        signals[key]=cash_signal(matches[0],sessions) if len(matches)==1 else None
+    return signals
+
 def compact_flows(results):
     output=[]
     for r in results if isinstance(results,list) else []:
         if r.get('check')=='Provider session calendar':continue
         keys=['check','status','reason','scope','instrument_key','expiry','daily_observations','intraday_closed_session_fallback','observations','net_sum_last_3_raw','net_sum_last_5_raw','units']
-        output.append({k:r[k] for k in keys if k in r})
+        item={k:r[k] for k in keys if k in r}
+        if r.get('check') in ('FII cash','DII cash'):
+            item['units']='₹ cr'
+            item['unit_basis']='User-specified assumption; no rescaling; independent reconciliation pending'
+        output.append(item)
     return output
 
 def redact(x):
@@ -73,7 +102,7 @@ def main():
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists():
         print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['Raw OI/cash units and independent exchange calendar reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -89,6 +118,7 @@ def main():
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
+                compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
@@ -97,7 +127,7 @@ def main():
                     compact['archive_sources']=[full[d].get('source') for d in dates]
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
-                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({'fii_futures':(net>0)-(net<0)}))
+                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)}))
                     # Withhold futures until source consistency is established. Keep observations for audit.
                     compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
             quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
