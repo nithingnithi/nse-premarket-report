@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-10-28",
+  "cutoff_IST": "2026-10-28T07:45:00+05:30",
+  "collected_at_IST": "2026-10-28T07:46:00+05:30",
+  "trading_day": "OPEN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": -1,
+      "fii_cash": null,
+      "dii_cash": null
+    },
+    "score": -1,
+    "available": 1,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls",
+      "fii_cash",
+      "dii_cash"
+    ],
+    "missing_count": 5,
+    "score_range": [
+      -6,
+      4
+    ],
+    "possible_categories": [
+      "BEARISH",
+      "NEUTRAL",
+      "BULLISH"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "vix_flag": "UNKNOWN",
+  "completed_sessions": {
+    "NSE": [
+      "2026-10-27"
+    ],
+    "NFO": [
+      "2026-10-27",
+      "2026-10-26"
+    ]
+  },
+  "limitations": [
+    "SYNTHETIC FIXTURE: not live or historical market observations.",
+    "Raw OI/cash units and independent exchange calendar reconciliation pending.",
+    "PCR/walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "global": [
+    {
+      "name": "GIFT Nifty",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "Dow",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "S&P 500",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "Nasdaq",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "Hang Seng",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "Nikkei",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "USD INR",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "Brent",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "name": "WTI",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE"
+    }
+  ],
+  "options": {},
+  "flows": [],
+  "news": [
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    },
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    },
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    },
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    },
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    },
+    {
+      "title": "Synthetic headline for layout checking only: market briefing and upcoming events",
+      "url": "https://example.com/test",
+      "published_IST": "2026-10-28T06:30:00+05:30"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Synthetic economic release",
+      "date_IST": "2026-10-28"
+    },
+    {
+      "title": "Synthetic economic release",
+      "date_IST": "2026-10-28"
+    },
+    {
+      "title": "Synthetic economic release",
+      "date_IST": "2026-10-28"
+    },
+    {
+      "title": "Synthetic economic release",
+      "date_IST": "2026-10-28"
+    }
+  ]
+}

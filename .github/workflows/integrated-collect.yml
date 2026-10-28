@@ -1,0 +1,43 @@
+name: Collect compact morning handoff
+on:
+  schedule:
+    - cron: '15 2 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['integrated/**', '.github/workflows/integrated-collect.yml']
+permissions:
+  contents: write
+concurrency:
+  group: morning-handoff-collection
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Collect bounded snapshot
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+        run: python3 -m integrated.collect
+      - name: Publish compact handoff
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- handoff/
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish compact morning snapshot'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: collection-evidence
+          path: |
+            out/raw-snapshot.json
+            handoff/*.json
+          retention-days: 7
+          if-no-files-found: warn

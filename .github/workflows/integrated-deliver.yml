@@ -1,0 +1,48 @@
+name: Deliver Codex-reviewed morning PDF
+on:
+  push:
+    branches: [main]
+    paths: ['review_requests/*.json']
+  workflow_dispatch:
+    inputs:
+      report_date:
+        description: 'YYYY-MM-DD; blank means today IST'
+        type: string
+        required: false
+      dry_run:
+        description: 'Render only; do not send Telegram'
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: morning-channel-delivery
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: main
+      - name: Install pinned PDF dependencies
+        run: python3 -m pip install -r requirements-report.txt
+      - name: Validate review, render and deliver once
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          REPORT_DATE: ${{ inputs.report_date }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 -m integrated.deliver
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: reviewed-report
+          path: out/*.pdf
+          retention-days: 7
+          if-no-files-found: warn

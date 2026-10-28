@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-10-28",
+  "snapshot_sha256": "d3e3a3a5f41aae4aa2b01949f64f1c525a400898437a28f91c5699a360777d44",
+  "summary": "Synthetic layout test only. Missing signals prevent a final directional bias. Values and dates in this fixture are not market evidence.",
+  "alerts": [
+    "Missing signals prevent a complete score.",
+    "Futures price/OI reconciliation remains pending.",
+    "VIX caution unknown; no threshold selected."
+  ],
+  "mcp_context": [
+    {
+      "source": "nse-bhavcopy",
+      "data_date": "2026-10-27",
+      "text": "Synthetic context for layout verification only."
+    }
+  ]
+}
