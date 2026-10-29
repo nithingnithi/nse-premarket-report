@@ -26,7 +26,7 @@ QUERIES = (
     ("Oil and USD", {"search": '"crude oil" | Brent | "USD/INR" | dollar'}),
 )
 MAX_PAGES = 1  # One planned request per category; incomplete pagination stays PARTIAL.
-MAX_REQUESTS = 6  # Includes any transient retries; the user's daily quota is shared.
+MAX_REQUESTS = 6  # Hard ceiling; three planned queries, with no automatic retries.
 ERROR_CODES = {"malformed_parameters", "invalid_api_token", "usage_limit_reached", "endpoint_access_restricted",
                "resource_not_found", "invalid_api_endpoint", "rate_limit_reached", "server_error", "maintenance_mode"}
 
@@ -81,50 +81,43 @@ class API:
         # URLs, exception strings, response bodies or provider error messages.
         request = urllib.request.Request(ENDPOINT + "?" + urllib.parse.urlencode({**params, "api_token": self.token}),
                                          headers={"Accept": "application/json", "User-Agent": CLIENT_IDENTITY}, method="GET")
-        for attempt in range(2):
-            if self.last_request_at is not None:
-                pause = self.min_interval - (time.monotonic() - self.last_request_at)
-                if pause > 0:
-                    time.sleep(pause)
-            remaining = self.deadline - time.monotonic()
-            if self.stopped or remaining <= 0 or self.requests >= self.max_requests:
+        if self.last_request_at is not None:
+            pause = self.min_interval - (time.monotonic() - self.last_request_at)
+            if pause > 0:
+                time.sleep(pause)
+        remaining = self.deadline - time.monotonic()
+        if self.stopped or remaining <= 0 or self.requests >= self.max_requests:
+            self.stopped = True
+            raise CheckFailure("The probe stopped at its bounded request/time budget.")
+        self.requests += 1
+        self.last_request_at = time.monotonic()
+        try:
+            with self.opener.open(request, timeout=min(15, remaining)) as response:
+                limit = numeric_header(getattr(response, "headers", {}), "X-RateLimit-Limit")
+                if limit:
+                    self.rate_limit_per_60_seconds = limit
+                    self.min_interval = max(2.2, 60 / limit + 0.2)
+                raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise CheckFailure("News response exceeded the size limit.")
+            data = json.loads(raw)
+            if not isinstance(data, dict) or "error" in data or "errors" in data:
+                raise CheckFailure("Provider returned an error or unexpected JSON envelope; raw details suppressed.")
+            return data
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            provider_code = error_code(exc)
+            exc.close()
+            if code in (401, 402, 403, 429):
                 self.stopped = True
-                raise CheckFailure("The probe stopped at its bounded request/time budget.")
-            self.requests += 1
-            self.last_request_at = time.monotonic()
-            try:
-                with self.opener.open(request, timeout=min(15, remaining)) as response:
-                    limit = numeric_header(getattr(response, "headers", {}), "X-RateLimit-Limit")
-                    if limit:
-                        self.rate_limit_per_60_seconds = limit
-                        self.min_interval = max(2.2, 60 / limit + 0.2)
-                    raw = response.read(2_000_001)
-                if len(raw) > 2_000_000:
-                    raise CheckFailure("News response exceeded the size limit.")
-                data = json.loads(raw)
-                if not isinstance(data, dict) or "error" in data or "errors" in data:
-                    raise CheckFailure("Provider returned an error or unexpected JSON envelope; raw details suppressed.")
-                return data
-            except urllib.error.HTTPError as exc:
-                code = exc.code
-                provider_code = error_code(exc)
-                exc.close()
-                if code in (401, 402, 403, 429):
-                    self.stopped = True
-                    category = {401: "invalid authentication", 402: "plan usage limit reached", 403: "endpoint access restricted",
-                                429: "rolling 60-second rate limit reached"}[code]
-                    raise CheckFailure("HTTP " + str(code) + ": " + category + "; provider_code=" + (provider_code or "unavailable") + "; further requests stopped.") from None
-                if not attempt and 500 <= code <= 599:
-                    time.sleep(2)
-                    continue
-                raise CheckFailure("HTTP " + str(code) + ": news request failed; URL and provider body suppressed.") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if not attempt:
-                    time.sleep(2)
-                    continue
-                raise CheckFailure("Network/TLS request failed; verification was not bypassed.") from None
-            except (ValueError, UnicodeError):
-                raise CheckFailure("News response was not valid JSON; raw details suppressed.") from None
+                category = {401: "invalid authentication", 402: "plan usage limit reached", 403: "endpoint access restricted",
+                            429: "rolling 60-second rate limit reached"}[code]
+                raise CheckFailure("HTTP " + str(code) + ": " + category + "; provider_code=" + (provider_code or "unavailable") + "; further requests stopped.") from None
+            raise CheckFailure("HTTP " + str(code) + ": news request failed; URL and provider body suppressed.") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise CheckFailure("Network/TLS request failed; no automatic retry was attempted.") from None
+        except (ValueError, UnicodeError):
+            raise CheckFailure("News response was not valid JSON; raw details suppressed.") from None
 
 
 def cutoff_for(now):

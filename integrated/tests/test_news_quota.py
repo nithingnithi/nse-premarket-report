@@ -47,6 +47,16 @@ class NewsQuotaTests(unittest.TestCase):
         self.assertEqual(api.requests,1)
         self.assertTrue(api.stopped)
 
+    def test_server_failure_does_not_repeat_category_request(self):
+        api=news.API('fixture-token-123456',max_requests=6)
+        class Reject:
+            def open(self,*args,**kwargs):
+                raise urllib.error.HTTPError('https://example.invalid',503,'unavailable',{},io.BytesIO(b'{}'))
+        api.opener=Reject()
+        with self.assertRaisesRegex(news.CheckFailure,'HTTP 503'):
+            api.get({'search':'India','limit':3,'page':1})
+        self.assertEqual(api.requests,1)
+
     def test_quota_exhaustion_is_timed_and_hides_partial_headlines(self):
         class QuotaAPI:
             requests=0;stopped=False;max_requests=6;rate_limit_per_60_seconds=None
