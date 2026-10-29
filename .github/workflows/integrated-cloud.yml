@@ -1,0 +1,49 @@
+name: Cloud morning review and channel delivery
+on:
+  schedule:
+    # UTC; 07:55 and 08:05 IST. The second attempt covers a delayed collection.
+    - cron: '25,35 2 * * *'
+  workflow_run:
+    workflows: ["Collect compact morning handoff"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: morning-channel-delivery
+  cancel-in-progress: false
+jobs:
+  review-and-deliver:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: main
+      - name: Generate bounded rules-based review
+        id: review
+        run: python3 -m integrated.cloud_review
+      - name: Publish review and deliver PDF
+        if: steps.review.outputs.ready == 'true'
+        env:
+          DRY_RUN: 'false'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          python3 -m pip install -r requirements-report.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- review_requests/
+          git commit -m 'Publish cloud morning review'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          python3 -m integrated.deliver
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: cloud-morning-report
+          path: out/*.pdf
+          retention-days: 7
+          if-no-files-found: ignore
