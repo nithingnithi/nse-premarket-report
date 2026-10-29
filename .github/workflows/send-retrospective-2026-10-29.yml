@@ -1,0 +1,50 @@
+name: Send reviewed 29 October retrospective PDF
+on:
+  push:
+    branches: [main]
+    paths: ['reports/2026-10-29-retrospective.pdf']
+permissions:
+  contents: write
+concurrency:
+  group: morning-channel-delivery
+  cancel-in-progress: false
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: main
+      - name: Verify, reserve, and send exactly one PDF
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          from integrated.telegram import send
+          path=Path('reports/2026-10-29-retrospective.pdf')
+          pdf=path.read_bytes()
+          expected='8c2d953c7164870c8dca86c03526fd1fdc04da8dfab7735a56a82af797af9dff'
+          assert pdf.startswith(b'%PDF-') and hashlib.sha256(pdf).hexdigest()==expected
+          if os.environ.get('GITHUB_RUN_ATTEMPT')!='1':
+              raise SystemExit('Rerun blocked; inspect Telegram and the delivery ledger.')
+          ledger=Path('delivery_ledger/2026-10-29.json')
+          ledger.parent.mkdir(exist_ok=True)
+          with ledger.open('x') as f:
+              json.dump({'report_date':'2026-10-29','status':'RESERVED_UNCERTAIN_UNTIL_VERIFIED','pdf_sha256':expected,'run_id':os.environ.get('GITHUB_RUN_ID')},f)
+          def persist():
+              subprocess.run(['git','add','--',str(ledger)],check=True)
+              subprocess.run(['git','commit','-m','Record 29 October retrospective delivery'],check=True)
+              subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          persist()  # A successful remote reservation is required before upload.
+          result=send(pdf,path.name)  # Verifies bot, channel, owner, and downloaded PDF hash.
+          ledger.write_text(json.dumps({'report_date':'2026-10-29',**result},indent=2))
+          persist()
+          print('RETROSPECTIVE_CHANNEL_DELIVERY_VERIFIED')
+          PY
