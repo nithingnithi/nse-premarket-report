@@ -56,5 +56,6 @@ def main():
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as stream:stream.write(summary)
     print('LIVE_DATA_DRY_RUN_PDF_READY',output,'N_A_FIELDS',len(missing))
+    print(summary)
 
 if __name__=='__main__':main()

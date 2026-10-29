@@ -33,7 +33,7 @@ jobs:
           git add -- history/shadow-signals.csv
           if ! git diff --cached --quiet; then
             git commit -m 'Record report v2 shadow comparison'
-            git pull --rebase origin improve/report-v2
+            git -c rebase.autoStash=true pull --rebase origin improve/report-v2
             git push origin HEAD:improve/report-v2
           fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
