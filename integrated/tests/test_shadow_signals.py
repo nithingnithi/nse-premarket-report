@@ -43,6 +43,20 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual(futures(bar,DAYS,'2026-10-29')['value'],-1)
         bar['daily_observations'][1]['date']='2026-10-26'
         self.assertIsNone(futures(bar,DAYS,'2026-10-29')['value'])
+    def test_27_to_28_oct_rollover_uses_next_contract_on_both_days(self):
+        from datetime import date
+        rows=[{'underlying_key':'NSE_INDEX|Nifty 50','instrument_key':'NSE_FO|201',
+               'instrument_type':'FUT','segment':'NSE_FO','exchange':'NSE',
+               'underlying_type':'INDEX','expiry':'2026-10-27','lot_size':65},
+              {'underlying_key':'NSE_INDEX|Nifty 50','instrument_key':'NSE_FO|202',
+               'instrument_type':'FUT','segment':'NSE_FO','exchange':'NSE',
+               'underlying_type':'INDEX','expiry':'2026-11-24','lot_size':65}]
+        selected=choose_future(rows,'NSE_INDEX|Nifty 50',date(2026,10,29))
+        self.assertEqual(selected['instrument_key'],'NSE_FO|202')
+        pair={'status':'PASS',**selected,'latest_date':'2026-10-28','previous_date':'2026-10-27',
+              'daily_observations':[{'date':'2026-10-28','close':'101','oi_raw':1100},
+                                    {'date':'2026-10-27','close':'100','oi_raw':1000}]}
+        self.assertEqual(futures(pair,DAYS,'2026-10-29')['value'],1)
     def test_tie_withholds_both_option_candidates(self):
         x=five_strike_summary();x['call_walls']=['120','130']
         result=options(x)

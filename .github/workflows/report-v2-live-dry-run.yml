@@ -1,0 +1,49 @@
+name: Report v2 live-data dry run
+on:
+  push:
+    branches: [improve/report-v2]
+    paths: ['integrated/**', 'nse_report/**', '.github/workflows/report-v2-live-dry-run.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: report-v2-live-dry-run
+  cancel-in-progress: false
+jobs:
+  collect-and-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - run: python3 -m pip install -r requirements-report.txt
+      - name: Collect live provider data
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+        run: python3 -m integrated.collect
+      - name: Append shadow CSV and render dry-run PDF
+        run: |
+          python3 -m integrated.shadow_history
+          python3 -m integrated.dry_run
+      - name: Save branch-only shadow history
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- history/shadow-signals.csv
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record report v2 shadow comparison'
+            git pull --rebase origin improve/report-v2
+            git push origin HEAD:improve/report-v2
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: report-v2-live-dry-run
+          path: |
+            handoff/*.json
+            history/shadow-signals.csv
+            out/report-v2-live-dry-run-*.pdf
+            out/live-dry-run-summary.md
+          retention-days: 7
+          if-no-files-found: warn
+

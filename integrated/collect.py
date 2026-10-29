@@ -10,7 +10,8 @@ from zoneinfo import ZoneInfo
 import urllib.request
 from integrated.adapters import flows, global_data, news, calendar, archive
 from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary, vix_caution
-from integrated.shadow_signals import config, build
+from integrated.shadow_signals import config, build, futures as future_context
+from integrated.news_selection import select as select_news
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -82,13 +83,39 @@ def compact_flows(results):
     output=[]
     for r in results if isinstance(results,list) else []:
         if r.get('check')=='Provider session calendar':continue
-        keys=['check','status','reason','scope','instrument_key','expiry','daily_observations','intraday_closed_session_fallback','observations','net_sum_last_3_raw','net_sum_last_5_raw','units']
+        keys=['check','status','reason','scope','instrument_key','expiry','daily_observations','intraday_closed_session_fallback','observations','net_sum_last_3_raw','net_sum_last_5_raw','units','delta_close','delta_oi_raw']
         item={k:r[k] for k in keys if k in r}
         if r.get('check') in ('FII cash','DII cash'):
             item['units']='₹ cr'
-            item['unit_basis']='User-specified assumption; no rescaling; independent reconciliation pending'
+            item['unit_basis']='₹ cr as directed; provider raw values retained without rescaling'
         output.append(item)
     return output
+
+def close_change(value, previous):
+    try:
+        current, prior = Decimal(str(value)), Decimal(str(previous))
+        if not current.is_finite() or not prior.is_finite() or prior <= 0:
+            raise ValueError('Missing positive previous close')
+        return {'previous_close':str(prior), 'change':str(current-prior),
+                'change_pct':str((current-prior)*100/prior)}
+    except (TypeError, ValueError, InvalidOperation):
+        return {'previous_close':None, 'change':None, 'change_pct':None}
+
+def index_close(api, key, expected_session, observed_now):
+    data=api.get('/market-quote/quotes',{'instrument_key':key})
+    item=flows.quote(data,key,observed_now)
+    if item.get('status')!='PASS' or not expected_session:
+        return {'status':'UNAVAILABLE','reason':'Index quote or completed session unavailable'}
+    try:
+        trade=dt.datetime.fromisoformat(item['last_trade_time_IST'])
+        if trade.tzinfo is None or trade.date().isoformat()!=expected_session:
+            raise ValueError('Quote does not belong to last completed session')
+        matches=[r for r in data.values() if isinstance(r,dict) and r.get('instrument_token')==key]
+        if len(matches)!=1:raise ValueError('Index identity ambiguous')
+        return {**item, **close_change(item['last_price'],matches[0].get('cp')),
+                'asof':item['last_trade_time_IST'],'status':'OK'}
+    except (ValueError,TypeError,KeyError):
+        return {'status':'UNAVAILABLE','reason':'Index quote does not belong to last completed session'}
 
 def redact(x):
     # Defence in depth before either artifact or compact handoff is written.
@@ -105,7 +132,7 @@ def main():
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists():
         print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'indices':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['Some fields may be unavailable at the report cutoff.','PCR and OI walls use related option data.','No DII offset is applied to FII cash.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -131,8 +158,10 @@ def main():
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
                         net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)},**thresholds))
-                    # Withhold futures until source consistency is established. Keep observations for audit.
-                    compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
+                expected=cal['completed_sessions']['NSE'][0] if cal['completed_sessions'].get('NSE') else None
+                for name,key in flows.INDICES.items():
+                    if name in ('Nifty','Bank Nifty'):
+                        compact['indices'][name]=attempt(lambda key=key:index_close(api,key,expected,now))
             quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
             compact['vix']=attempt(lambda:flows.quote(quotes,flows.INDICES['India VIX'],now))
             try:
@@ -167,16 +196,32 @@ def main():
                             t=dt.datetime.fromisoformat(stamp);eligible=t.tzinfo is not None and cutoff-dt.timedelta(hours=18)<=t<=cutoff
                             if 'bar_start_IST' in r:eligible=eligible and t+dt.timedelta(minutes=1)<=cutoff
                         except (ValueError,TypeError):pass
-                        compact['global'].append({'name':name,'value':r.get('last_price',r.get('last_closed_minute_price')) if eligible else None,'asof':stamp if eligible else None,'status':'PROVISIONAL' if eligible else 'UNAVAILABLE','note':'Benchmark, units and market-session freshness unverified'})
-            news.MAX_PAGES=2
-            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=6),now));full['news']=n
+                        value=r.get('last_price',r.get('last_closed_minute_price')) if eligible else None
+                        prior=r.get('previous_close_raw',r.get('ohlc_close_raw')) if eligible else None
+                        comparison=close_change(value,prior)
+                        compact['global'].append({'name':name,'value':value,'asof':stamp if eligible else None,
+                            **comparison,'status':'OK' if eligible else 'UNAVAILABLE',
+                            'reason':None if eligible else r.get('reason','No observation within cutoff window'),
+                            'change_reason':None if comparison['change_pct'] is not None else 'Previous close not supplied by this quote'})
+            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=60),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
-            compact['news']=[{k:r.get(k) for k in ('title','url','published_IST')} for r in n.get('articles',[])[:6]]
-            compact['news_note']='Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.'
+            compact['news_reason']=n.get('reason') or ('Selected queries did not cover the full window' if n.get('status')!='PASS' else None)
+            compact['news']=select_news(n.get('articles',[]),cutoff,limit=6)
+            compact['news_note']='Selected market queries, last 12 hours; incomplete retrieval is labelled.' if n.get('status')!='PASS' else 'Selected market queries, last 12 hours.'
             c=attempt(lambda:calendar.run(now));full['calendar']=c
-            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in c.get('events',[])[:6]]
+            important=('employment situation','consumer price','gross domestic product','personal income','fomc')
+            selected=[r for r in c.get('events',[]) if
+                      (r.get('agency')=='RBI' and 'monetary policy' in r.get('title','').casefold()) or
+                      (r.get('agency')=='MoSPI' and 'consumer price' in r.get('title','').casefold()) or
+                      (r.get('agency') in ('BLS','BEA','Federal Reserve') and any(k in r.get('title','').casefold() for k in important))]
+            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in selected[:6]]
             compact['calendar_status']='PARTIAL'
+            compact['calendar_reason']=c.get('reason') or ('No selected dated event was returned' if not compact['calendar'] else None)
     compact['shadow_signals']=build(full.get('flows'),compact['options'].get('NIFTY'),compact.get('completed_sessions',{}).get('NFO',[]),str(day),policy['shadow_signals_enabled'])
+    flow_rows=full.get('flows') if isinstance(full.get('flows'),list) else []
+    nfo_days=compact.get('completed_sessions',{}).get('NFO',[])
+    compact['futures_context']={name:future_context(next((row for row in flow_rows if row.get('check')==name+' futures'),None),nfo_days,str(day))
+                                for name in ('NIFTY','BANKNIFTY')}
     compact['collection_status']=compact.get('collection_status','PARTIAL' if compact['trading_day']=='OPEN' else compact['trading_day'])
     compact['timing']='ON_TIME_COLLECTION' if now<=cutoff+dt.timedelta(minutes=10) else 'LATE_COLLECTION'
     compact=redact(compact);full=redact(full)

@@ -303,8 +303,8 @@ def run_checks(api, now, queries=QUERIES):
             "queries": results, "requested_query_count": len(queries), "http_attempts": api.requests,
             "max_http_attempts": getattr(api, "max_requests", MAX_REQUESTS),
             "rate_limit_per_60_seconds": getattr(api, "rate_limit_per_60_seconds", None),
-            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique[:12],
-            "summary_article_limit": 12, "coverage": "Selected queries only; not an exhaustive market-news archive.",
+            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique,
+            "coverage": "Selected queries only; not an exhaustive market-news archive.",
             "deduplication": "Provider similar-story grouping plus local UUID, canonical URL and normalized-title matching; paraphrased syndication remains unverified.",
             "date_convention": "Marketaux documents all dates as UTC; displayed in IST.",
             "scope": "Manual access/date/schema test only. No news-derived signal, causal narrative, score, Telegram message or PDF is generated."}
