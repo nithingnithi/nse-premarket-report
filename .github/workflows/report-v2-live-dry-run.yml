@@ -20,6 +20,7 @@ jobs:
         env:
           UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
           MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+          FORCE_DRY_RUN_COLLECTION: 'true'
         run: python3 -m integrated.collect
       - name: Append shadow CSV and render dry-run PDF
         run: |
@@ -46,4 +47,3 @@ jobs:
             out/live-dry-run-summary.md
           retention-days: 7
           if-no-files-found: warn
-

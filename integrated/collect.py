@@ -130,7 +130,7 @@ def main():
     thresholds={'bullish_threshold':policy['bullish_threshold'],'bearish_threshold':policy['bearish_threshold']}
     if now<cutoff:raise SystemExit('Not yet at report cutoff; no previous-day substitution')
     day=now.date();target=Path('handoff')/(str(day)+'.json')
-    if target.exists():
+    if target.exists() and os.environ.get('FORCE_DRY_RUN_COLLECTION')!='true':
         print('Snapshot already exists; no repeat provider requests');return
     compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'indices':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['Some fields may be unavailable at the report cutoff.','PCR and OI walls use related option data.','No DII offset is applied to FII cash.']}
     full={}
