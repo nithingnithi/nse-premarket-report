@@ -9,7 +9,8 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 from integrated.adapters import flows, global_data, news, calendar, archive
-from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary
+from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary, vix_caution
+from integrated.shadow_signals import config, build
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -50,7 +51,7 @@ def option_summary(old,new,symbol):
         chains.append(OptionChain(symbol,expiry,snap['date'],'UNVERIFIED_RAW','NSE_ARCHIVE',tuple(OptionRow(k,p['CE'],p['PE']) for k,p in pairs.items())))
     if identities[0]!=identities[1] or len(lots)!=1:raise ValueError('Contract universe changed')
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
-    return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
+    return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls_previous':x['previous']['call_walls'],'put_walls_previous':x['previous']['put_walls'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
 
 def cash_signal(row, sessions):
     """User-approved rule: sign of five completed-session net; no DII offset."""
@@ -98,11 +99,13 @@ def redact(x):
 
 def main():
     now=dt.datetime.now(IST);cutoff=now.replace(hour=7,minute=45,second=0,microsecond=0)
+    policy=config()
+    thresholds={'bullish_threshold':policy['bullish_threshold'],'bearish_threshold':policy['bearish_threshold']}
     if now<cutoff:raise SystemExit('Not yet at report cutoff; no previous-day substitution')
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists():
         print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -118,7 +121,7 @@ def main():
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
-                compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
+                compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE']),**thresholds))
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
@@ -127,7 +130,7 @@ def main():
                     compact['archive_sources']=[full[d].get('source') for d in dates]
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
-                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)}))
+                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)},**thresholds))
                     # Withhold futures until source consistency is established. Keep observations for audit.
                     compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
             quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
@@ -138,6 +141,19 @@ def main():
                     compact['vix']={'status':'UNAVAILABLE','reason':'Not a confirmed previous-session observation'}
             except (KeyError,ValueError,TypeError,IndexError):
                 compact['vix']={'status':'UNAVAILABLE'}
+            if compact['vix'].get('status')=='PASS':
+                compact['vix']['level']=compact['vix'].get('last_price')
+                compact['vix_flag']=vix_caution(compact['vix']['level'],threshold=policy['vix_caution_threshold'])
+                try:
+                    matches=[r for r in quotes.values() if isinstance(r,dict) and r.get('instrument_token')==flows.INDICES['India VIX']]
+                    previous=Decimal(str(matches[0].get('cp'))) if len(matches)==1 else None
+                    current=Decimal(str(compact['vix']['level']))
+                    if previous is not None and previous.is_finite() and previous>0 and current.is_finite():
+                        compact['vix']['change_1d']=str(current-previous)
+                        compact['vix']['previous_close']=str(previous)
+                    else:compact['vix']['change_1d']=None
+                except (InvalidOperation,TypeError,ValueError):compact['vix']['change_1d']=None
+                compact['vix']['change_reason']=None if compact['vix']['change_1d'] is not None else 'Previous close unavailable'
             gapi=attempt(lambda:global_data.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
             if not isinstance(gapi,dict):
                 instruments=attempt(lambda:global_data.instruments(global_data.global_file()))
@@ -160,6 +176,7 @@ def main():
             c=attempt(lambda:calendar.run(now));full['calendar']=c
             compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in c.get('events',[])[:6]]
             compact['calendar_status']='PARTIAL'
+    compact['shadow_signals']=build(full.get('flows'),compact['options'].get('NIFTY'),compact.get('completed_sessions',{}).get('NFO',[]),str(day),policy['shadow_signals_enabled'])
     compact['collection_status']=compact.get('collection_status','PARTIAL' if compact['trading_day']=='OPEN' else compact['trading_day'])
     compact['timing']='ON_TIME_COLLECTION' if now<=cutoff+dt.timedelta(minutes=10) else 'LATE_COLLECTION'
     compact=redact(compact);full=redact(full)

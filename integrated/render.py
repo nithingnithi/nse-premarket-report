@@ -70,7 +70,7 @@ def render(s,r,path):
     for i,(tag,value,note) in enumerate([
         ('RAW SCORE',str(q['score']),'Possible range ['+text(q['score_range'])+']'),
         ('COVERAGE',f'{q["available"]} / 6','Valid signals; missing is not zero'),
-        ('VIX CAUTION',text(s.get('vix_flag','UNKNOWN')),'Separate from directional score')]):
+        ('VIX CAUTION',text(s.get('vix_flag','UNKNOWN')),'Level '+number(s.get('vix',{}).get('level'))+' | 1D '+number(s.get('vix',{}).get('change_1d')))]):
         x=28+i*183;rect(x,624,173,79,'#FFFFFF',7);label(tag,x+12,613,149)
         p(value,x+12,594,149,25 if i<2 else 16,TEAL if i==1 else INK,True)
         p(note,x+12,560,150,7.5,MUTED)
@@ -78,7 +78,10 @@ def render(s,r,path):
     label('Signal ledger',28,533)
     for i,(key,name) in enumerate(names):
         x=28+i*91;v=q['signals'][key];rect(x,518,84,39,'#E6EEEE' if v is None else '#D6EEE8',5)
-        p(name,x+7,511,72,8,INK,True);p('MISSING' if v is None else f'{v:+d}',x+7,497,72,7.5,MUTED if v is None else TEAL)
+        p(name,x+7,511,72,8,INK,True);p('MISSING' if v is None else f'{v:+d}',x+7,499,72,7.3,MUTED if v is None else TEAL)
+        if key in s.get('shadow_signals',{}):
+            shadow=s['shadow_signals'][key]
+            p('shadow '+(f"{shadow['value']:+d}" if shadow.get('value') is not None else 'N/A'),x+7,488,72,6.4,MUTED)
     section('01','Three things to know',465)
     for i,a in enumerate(r['alerts']):
         x=28+i*183;rect(x,437,173,82,'#FFFFFF',6);p(f'0{i+1}',x+10,427,25,11,AMBER,True)

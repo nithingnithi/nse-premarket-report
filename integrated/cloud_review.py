@@ -12,6 +12,8 @@ def make_review(snapshot):
     n=score['available']
     missing=score['missing']
     bias=score['bias']
+    shadows=snapshot.get('shadow_signals',{})
+    shadow_note=' Shadow candidates (not scored): '+ '; '.join(k.replace('_',' ') + ' '+ (f"{v['value']:+d}" if v.get('value') is not None else 'N/A') + ' ('+v.get('reason','no reason')+')' for k,v in shadows.items())+'.' if shadows else ''
     summary=(
         f"At the 07:45 IST report cutoff, the deterministic score is {score['score']:+d} "
         f"from {n}/6 available signals. The theoretical range is "
@@ -21,7 +23,7 @@ def make_review(snapshot):
         "Option levels and global data retain their source status and timestamps. "
         "Cash figures are shown in ₹ cr under the user-specified unit assumption; "
         "independent unit reconciliation remains pending. No DII-offset bonus is applied. "
-        "This is a rules-based cloud summary; dated NSE MCP context was not available in GitHub Actions."
+        "This is a rules-based cloud summary; dated NSE MCP context was not available in GitHub Actions."+shadow_note
     )
     alerts=[
         (f"Only {n}/6 scoring signals available; {bias}." if missing else f"All six signals available; computed bias: {bias}."),
