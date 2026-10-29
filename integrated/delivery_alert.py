@@ -44,18 +44,24 @@ def send_private(day, opener=None):
     chat = os.environ.get('TELEGRAM_CHAT_ID', '')
     if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token) or not re.fullmatch(r'[1-9][0-9]*', chat):
         raise ValueError('Private Telegram alert configuration is unavailable')
-    body = json.dumps({'chat_id': chat,
-                       'text': f'NSE Morning Report {day}: no verified channel delivery by 08:00 IST. Check the workflow and delivery ledger before retrying.'}).encode()
-    request = urllib.request.Request('https://api.telegram.org/bot' + token + '/sendMessage',
-                                     data=body, headers={'Content-Type': 'application/json'}, method='POST')
     client = opener or urllib.request.build_opener(NoRedirect())
-    try:
-        with client.open(request, timeout=20) as response:
-            result = json.load(response)
-    except Exception:
-        raise RuntimeError('Private delivery alert failed; sensitive details suppressed') from None
-    if not isinstance(result, dict) or result.get('ok') is not True:
-        raise RuntimeError('Private delivery alert was rejected; sensitive details suppressed')
+    def call(method, payload):
+        request = urllib.request.Request('https://api.telegram.org/bot' + token + '/' + method,
+                                         data=json.dumps(payload).encode(),
+                                         headers={'Content-Type': 'application/json'}, method='POST')
+        try:
+            with client.open(request, timeout=20) as response:
+                result = json.load(response)
+        except Exception:
+            raise RuntimeError('Private delivery alert request failed; sensitive details suppressed') from None
+        if not isinstance(result, dict) or result.get('ok') is not True:
+            raise RuntimeError('Private delivery alert request was rejected; sensitive details suppressed')
+        return result.get('result')
+    destination = call('getChat', {'chat_id': chat})
+    if not isinstance(destination, dict) or destination.get('type') != 'private' or destination.get('id') != int(chat):
+        raise RuntimeError('Configured alert destination is not the verified private chat')
+    call('sendMessage', {'chat_id': chat,
+                         'text': f'NSE Morning Report {day}: no verified delivery was recorded by 08:00 IST. The PDF may have sent; inspect the channel and ledger before retrying.'})
 
 
 def main():

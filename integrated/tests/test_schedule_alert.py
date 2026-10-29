@@ -57,21 +57,39 @@ class PrivateAlertTests(unittest.TestCase):
 
     def test_private_alert_is_mocked_and_uses_private_chat(self):
         class Response:
-            def __enter__(self): return io.BytesIO(b'{"ok":true}')
+            def __init__(self, body): self.body = body
+            def __enter__(self): return io.BytesIO(self.body)
             def __exit__(self, *args): return False
         class Opener:
             def __init__(self): self.requests = []
             def open(self, request, timeout):
                 self.requests.append(request)
-                return Response()
+                if request.full_url.endswith('/getChat'):
+                    return Response(b'{"ok":true,"result":{"id":123456,"type":"private"}}')
+                return Response(b'{"ok":true,"result":{}}')
         opener = Opener()
         with patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': '123:fixture-token',
                                       'TELEGRAM_CHAT_ID': '123456'}, clear=False):
             send_private('2026-10-29', opener)
-        self.assertEqual(len(opener.requests), 1)
-        body = json.loads(opener.requests[0].data)
+        self.assertEqual(len(opener.requests), 2)
+        body = json.loads(opener.requests[1].data)
         self.assertEqual(body['chat_id'], '123456')
         self.assertIn('08:00 IST', body['text'])
+
+    def test_non_private_destination_never_receives_message(self):
+        class Response:
+            def __enter__(self): return io.BytesIO(b'{"ok":true,"result":{"id":123456,"type":"group"}}')
+            def __exit__(self, *args): return False
+        class Opener:
+            def __init__(self): self.calls = 0
+            def open(self, request, timeout):
+                self.calls += 1
+                return Response()
+        opener = Opener()
+        with patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': '123:fixture-token',
+                                      'TELEGRAM_CHAT_ID': '123456'}, clear=False):
+            with self.assertRaises(RuntimeError): send_private('2026-10-29', opener)
+        self.assertEqual(opener.calls, 1)
 
 
 if __name__ == '__main__': unittest.main()
