@@ -21,12 +21,12 @@ UTC = dt.timezone.utc
 ENDPOINT = "https://api.marketaux.com/v1/news/all"
 CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-news report)"
 QUERIES = (
-    ("India market entities", {"countries": "in"}),
-    ("India macro keywords", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
-    ("Global macro keywords", {"search": '"Federal Reserve" | inflation | crude | tariff | Treasury | geopolitics'}),
+    ("India market", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
+    ("Fed and US", {"search": '"Federal Reserve" | "US inflation" | "US jobs"'}),
+    ("Oil and USD", {"search": '"crude oil" | Brent | "USD/INR" | dollar'}),
 )
-MAX_PAGES = 40  # Unmet provider pagination stays PARTIAL at either bounded limit.
-MAX_REQUESTS = 70  # Includes transient retries; daily free quota is shared across runs.
+MAX_PAGES = 1  # One planned request per category; incomplete pagination stays PARTIAL.
+MAX_REQUESTS = 6  # Includes any transient retries; the user's daily quota is shared.
 ERROR_CODES = {"malformed_parameters", "invalid_api_token", "usage_limit_reached", "endpoint_access_restricted",
                "resource_not_found", "invalid_api_endpoint", "rate_limit_reached", "server_error", "maintenance_mode"}
 
@@ -296,14 +296,17 @@ def run_checks(api, now, queries=QUERIES):
         except Exception:
             results.append({"check": label, "status": "FAIL", "reason": "Unexpected news schema; raw sensitive details suppressed."})
     unique, duplicates = deduplicate(articles)
+    quota_rows=[row for row in results if str(row.get('reason','')).startswith(('HTTP 429:','HTTP 402:'))]
+    quota=bool(quota_rows)
     return {"checked_at_IST": now.isoformat(), "cutoff_IST": cutoff.isoformat(),
             "window_start_exclusive_IST": (cutoff - dt.timedelta(hours=12)).isoformat(),
-            "status": ("FAIL" if any(row["status"] == "FAIL" for row in results)
+            "status": ("QUOTA" if quota else "FAIL" if any(row["status"] == "FAIL" for row in results)
                        else "PASS" if all(row["status"] == "PASS" for row in results) else "PARTIAL"),
+            "quota_at_IST": dt.datetime.now(IST).isoformat(timespec='seconds') if quota else None,
             "queries": results, "requested_query_count": len(queries), "http_attempts": api.requests,
             "max_http_attempts": getattr(api, "max_requests", MAX_REQUESTS),
             "rate_limit_per_60_seconds": getattr(api, "rate_limit_per_60_seconds", None),
-            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique,
+            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": [] if quota else unique,
             "coverage": "Selected queries only; not an exhaustive market-news archive.",
             "deduplication": "Provider similar-story grouping plus local UUID, canonical URL and normalized-title matching; paraphrased syndication remains unverified.",
             "date_convention": "Marketaux documents all dates as UTC; displayed in IST.",
@@ -318,7 +321,7 @@ def main():
         if scope not in ("all", "global_macro"):
             raise CheckFailure("News probe scope must be all or global_macro.")
         queries = QUERIES if scope == "all" else (QUERIES[-1],)
-        budget = MAX_REQUESTS if scope == "all" else 39
+        budget = MAX_REQUESTS
         report = run_checks(API(token, max_requests=budget), now, queries)
     except CheckFailure as exc:
         report = {"status": "FAIL", "reason": str(exc)}

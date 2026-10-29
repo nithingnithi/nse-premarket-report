@@ -35,7 +35,10 @@ def unavailable(snapshot):
     for row in snapshot.get('global',[]):
         add(row.get('name','Market'),row,'value','No timely quote')
         add(row.get('name','Market')+' previous close',row,'previous_close','Previous close unavailable')
-    if not snapshot.get('news'):items.append(('News',snapshot.get('news_reason') or 'No eligible item in selected 12-hour queries'))
+    if not snapshot.get('news'):
+        reason=snapshot.get('news_reason') or 'No eligible item in selected 12-hour queries'
+        if snapshot.get('news_status')=='QUOTA':reason+=' at '+str(snapshot.get('news_quota_at_IST') or 'time unavailable')
+        items.append(('News',reason))
     if not snapshot.get('calendar'):items.append(('Calendar',snapshot.get('calendar_reason') or 'No dated item returned'))
     calendar=snapshot.get('calendar') or []
     if not any(a.get('agency')=='RBI' and 'monetary policy' in a.get('title','').casefold() for a in calendar):

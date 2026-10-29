@@ -143,7 +143,10 @@ def render(s,r,path):
     section('05','Market headlines / last 12 hours',162)
     headlines=s.get('news') or []
     for i,item in enumerate(headlines[:3]): linked_headline(item,137-i*30)
-    if not headlines: p(28,137,539,'N/A — No eligible market headline returned for this window.',8,MUTED)
+    if not headlines:
+        message=('News unavailable (quota) • '+stamp(s.get('news_quota_at_IST')) if s.get('news_status')=='QUOTA'
+                 else 'N/A — '+brief(s.get('news_reason','No eligible market headline returned for this window'),95))
+        p(28,137,539,message,8,MUTED)
     c.showPage()
 
     base(2,'The numbers and dates')
@@ -181,7 +184,10 @@ def render(s,r,path):
         p(36,306,520,'N/A: '+brief(fi.get('reason') or di.get('reason') or 'Five-session cash series incomplete',100),6.5,MUTED)
     section('08','More market headlines',288)
     for i,item in enumerate(headlines[3:6]): linked_headline(item,261-i*28)
-    if len(headlines)<=3: p(28,261,539,'N/A — No additional eligible headline returned.',7.3,MUTED)
+    if len(headlines)<=3:
+        message=('News unavailable (quota) • '+stamp(s.get('news_quota_at_IST')) if s.get('news_status')=='QUOTA'
+                 else 'N/A — No additional eligible headline returned.')
+        p(28,261,539,message,7.3,MUTED)
     p(28,171,539,'News scope: '+brief(s.get('news_note','Selected market queries; coverage may be partial'),108),6.2,MUTED)
     section('09','Calendar / dates in IST',154)
     options=s.get('options') or {}; expiries=sorted({a.get('expiry') for a in options.values() if isinstance(a,dict) and a.get('expiry')})

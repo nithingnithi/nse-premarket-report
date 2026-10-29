@@ -124,6 +124,36 @@ def redact(x):
         if token:x=news.redact(x,token)
     return x
 
+def collect_news(day,cutoff,now,cache_path,fetcher):
+    """Reuse one validated, credential-free news result for a report date."""
+    cache_path=Path(cache_path)
+    if cache_path.exists():
+        try:
+            cached=json.loads(cache_path.read_text())
+            result=cached['response']
+            if (cached.get('schema_version')!=1 or cached.get('report_date')!=str(day)
+                    or cached.get('cutoff_IST')!=cutoff.isoformat()
+                    or not isinstance(result,dict)
+                    or result.get('status') not in ('PASS','PARTIAL','FAIL','QUOTA','UNAVAILABLE')
+                    or type(result.get('http_attempts',0)) is not int
+                    or not 0<=result.get('http_attempts',0)<=news.MAX_REQUESTS):
+                raise ValueError('Invalid dated news cache')
+            return result,'HIT',0
+        except (OSError,ValueError,KeyError,TypeError):
+            return {'status':'UNAVAILABLE','reason':'Dated news cache invalid; no new requests made',
+                    'articles':[],'http_attempts':0},'INVALID',0
+    result=redact(attempt(fetcher))
+    if not isinstance(result,dict):
+        result={'status':'UNAVAILABLE','reason':'News response invalid','articles':[],'http_attempts':0}
+    used=result.get('http_attempts',0)
+    if type(used) is not int or not 0<=used<=news.MAX_REQUESTS:
+        result={'status':'UNAVAILABLE','reason':'News request count invalid','articles':[],'http_attempts':0}
+        used=0
+    cache_path.parent.mkdir(parents=True,exist_ok=True)
+    cache_path.write_text(json.dumps({'schema_version':1,'report_date':str(day),
+        'cutoff_IST':cutoff.isoformat(),'response':result},ensure_ascii=False,allow_nan=False))
+    return result,'MISS',used
+
 def main():
     now=dt.datetime.now(IST);cutoff=now.replace(hour=7,minute=45,second=0,microsecond=0)
     policy=config()
@@ -131,7 +161,9 @@ def main():
     if now<cutoff:raise SystemExit('Not yet at report cutoff; no previous-day substitution')
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists() and os.environ.get('FORCE_DRY_RUN_COLLECTION')!='true':
-        print('Snapshot already exists; no repeat provider requests');return
+        print('Snapshot already exists; no repeat provider requests')
+        print('NEWS_REQUESTS_USED 0 CACHE SNAPSHOT')
+        return
     compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'indices':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['Some fields may be unavailable at the report cutoff.','PCR and OI walls use related option data.','No DII offset is applied to FII cash.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
@@ -203,11 +235,19 @@ def main():
                             **comparison,'status':'OK' if eligible else 'UNAVAILABLE',
                             'reason':None if eligible else r.get('reason','No observation within cutoff window'),
                             'change_reason':None if comparison['change_pct'] is not None else 'Previous close not supplied by this quote'})
-            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=60),now));full['news']=n
+            n,cache_state,used=collect_news(day,cutoff,now,Path('handoff')/('news-'+str(day)+'.json'),
+                lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=news.MAX_REQUESTS),now))
+            full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
-            compact['news_reason']=n.get('reason') or ('Selected queries did not cover the full window' if n.get('status')!='PASS' else None)
-            compact['news']=select_news(n.get('articles',[]),cutoff,limit=6)
-            compact['news_note']='Selected market queries, last 12 hours; incomplete retrieval is labelled.' if n.get('status')!='PASS' else 'Selected market queries, last 12 hours.'
+            compact['news_cache']=cache_state
+            compact['news_requests_used']=used
+            compact['news_quota_at_IST']=n.get('quota_at_IST')
+            compact['news_reason']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
+                n.get('reason') or ('Selected queries did not cover the full window' if n.get('status')!='PASS' else None))
+            compact['news']=[] if n.get('status')=='QUOTA' else select_news(n.get('articles',[]),cutoff,limit=6)
+            compact['news_note']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
+                'Selected market queries, last 12 hours; incomplete retrieval is labelled.' if n.get('status')!='PASS' else
+                'Selected market queries, last 12 hours.')
             c=attempt(lambda:calendar.run(now));full['calendar']=c
             important=('employment situation','consumer price','gross domestic product','personal income','fomc')
             selected=[r for r in c.get('events',[]) if
@@ -230,6 +270,9 @@ def main():
     Path('out').mkdir(exist_ok=True);Path('out/raw-snapshot.json').write_text(json.dumps(clean(full),allow_nan=False))
     Path('handoff/latest.json').write_text(json.dumps({'report_date':str(day),'path':str(target),'snapshot_sha256':digest(compact),'status':compact['collection_status'],'trading_day':compact['trading_day']},indent=2))
     print('HANDOFF_READY',compact['collection_status'],'compact_bytes',target.stat().st_size)
+    print('NEWS_REQUESTS_USED',compact.get('news_requests_used',0),'CACHE',compact.get('news_cache','NONE'))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
-        Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Collection completed\n\nData status: '+compact['collection_status']+'\n\nCompact handoff saved; missing fields remain unavailable. No report sent.\n')
+        Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Collection completed\n\nData status: '+compact['collection_status']+
+            '\n\nNews requests used this run: '+str(compact.get('news_requests_used',0))+
+            '; cache: '+compact.get('news_cache','NONE')+'.\n\nCompact handoff saved; missing fields remain unavailable. No report sent.\n')
 if __name__=='__main__':main()
