@@ -42,7 +42,10 @@ def main():
         pointer=json.loads(Path('handoff/latest.json').read_text())
         report_date=pointer['report_date']
     snapshot=json.loads((Path('handoff')/(report_date+'.json')).read_text())
-    count=append('history/shadow-signals.csv',snapshot,os.environ.get('GITHUB_RUN_ID','local'),
+    run_id=os.environ.get('GITHUB_RUN_ID')
+    if run_id and snapshot.get('source_run')!=run_id:
+        raise ValueError('Shadow history requires a snapshot collected in this run')
+    count=append('history/shadow-signals.csv',snapshot,run_id or 'local',
                  os.environ.get('GITHUB_RUN_ATTEMPT','1'))
     print('SHADOW_HISTORY_ROWS',count)
 

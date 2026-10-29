@@ -23,7 +23,7 @@ class ReportV2Tests(unittest.TestCase):
         snapshot=json.loads((ROOT/'snapshot.json').read_text())
         labels=dict(unavailable(snapshot))
         self.assertIn('Completed-session quote unavailable',labels['Nifty spot'])
-        self.assertIn('Same-expiry option baseline unavailable',labels['NIFTY options'])
+        self.assertIn('Same-expiry option baseline unavailable',labels['NIFTY PCR'])
 
     def test_news_window_relevance_and_syndication(self):
         cutoff=dt.datetime(2026,10,29,7,45,tzinfo=dt.timezone(dt.timedelta(hours=5,minutes=30)))

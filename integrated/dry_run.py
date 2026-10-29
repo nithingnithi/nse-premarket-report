@@ -18,19 +18,30 @@ def unavailable(snapshot):
         if record.get(field) is None:
             items.append((label,record.get('reason') or record.get('change_reason') or default))
     for name in ('Nifty','Bank Nifty'):
-        add(name+' spot',snapshot.get('indices',{}).get(name),'last_price','Completed-session quote unavailable')
+        spot=snapshot.get('indices',{}).get(name)
+        add(name+' spot',spot,'last_price','Completed-session quote unavailable')
+        add(name+' spot change',spot,'change','Previous completed-session close unavailable')
     flows={row.get('check'):row for row in snapshot.get('flows',[]) if isinstance(row,dict)}
     for name in ('NIFTY futures','BANKNIFTY futures','FII index-futures positions','FII cash','DII cash'):
         row=flows.get(name) or {}
         if row.get('status')!='PASS':items.append((name,row.get('reason','Provider did not return required dates or fields')))
     for name in ('NIFTY','BANKNIFTY'):
-        add(name+' options',snapshot.get('options',{}).get(name),'pcr_current','Same-expiry option baseline unavailable')
+        option=snapshot.get('options',{}).get(name)
+        add(name+' PCR',option,'pcr_current','Same-expiry option baseline unavailable')
+        for field in ('call_walls','put_walls','max_pain'):
+            add(name+' '+field.replace('_',' '),option,field,'Same-expiry option levels unavailable')
     add('India VIX',snapshot.get('vix'),'level','Previous-session volatility quote unavailable')
+    add('India VIX 1-day change',snapshot.get('vix'),'change_1d','Previous close or previous-session VIX quote unavailable')
     for row in snapshot.get('global',[]):
         add(row.get('name','Market'),row,'value','No timely quote')
         add(row.get('name','Market')+' previous close',row,'previous_close','Previous close unavailable')
     if not snapshot.get('news'):items.append(('News',snapshot.get('news_reason') or 'No eligible item in selected 12-hour queries'))
     if not snapshot.get('calendar'):items.append(('Calendar',snapshot.get('calendar_reason') or 'No dated item returned'))
+    calendar=snapshot.get('calendar') or []
+    if not any(a.get('agency')=='RBI' and 'monetary policy' in a.get('title','').casefold() for a in calendar):
+        items.append(('RBI date','No dated monetary policy item in the supplied calendar horizon'))
+    if not any(a.get('agency')=='MoSPI' and 'consumer price' in a.get('title','').casefold() for a in calendar):
+        items.append(('India CPI date','No dated CPI item in the supplied calendar horizon'))
     for name,row in snapshot.get('shadow_signals',{}).items():
         add('Shadow '+name.replace('_',' '),row,'value','No qualifying baseline')
     return items

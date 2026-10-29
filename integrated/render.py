@@ -125,9 +125,10 @@ def render(s,r,path):
         p(x+10,466,245,'Spot '+num(spot.get('last_price'))+'  ('+num(spot.get('change'),2,True)+')',8.4,TEAL,True)
         if spot.get('last_price') is None:
             p(x+10,453,245,brief(spot.get('reason','Completed-session quote unavailable'),58),6.5,MUTED)
-        p(x+10,440,245,'Future '+num(latest.get('close'))+'  ('+num(f.get('delta_close'),2,True)+')',8)
-        p(x+10,425,245,'OI '+num(latest.get('oi_raw'),0)+' raw  ('+num(f.get('delta_oi_raw'),0,True)+')',7.7)
-        p(x+10,411,245,'Build-up: '+brief(context.get('reason','No qualified observation'),57),7,MUTED,maxh=18)
+        p(x+10,440,245,'Future '+('OK ' if latest.get('close') is not None else 'N/A ')+num(latest.get('close'))+'  ('+num(f.get('delta_close'),2,True)+')',8)
+        p(x+10,425,245,'OI '+num(latest.get('oi_raw'),0)+' provider counts  ('+num(f.get('delta_oi_raw'),0,True)+')',7.2)
+        build_status='OK' if context.get('value') is not None else 'WITHHELD'
+        p(x+10,411,245,'Build-up '+build_status+': '+brief(context.get('reason','No qualified observation'),49),7,MUTED,maxh=18)
     section('03','Option levels and distance from spot',381)
     for i,(name,key) in enumerate((('Nifty','NIFTY'),('Bank Nifty','BANKNIFTY'))):
         option_card(28+i*275,name,(s.get('options') or {}).get(key) or {},((s.get('indices') or {}).get(name) or {}).get('last_price'))
@@ -137,7 +138,8 @@ def render(s,r,path):
         rect(28,top+1,539,20,'#FFFFFF')
         p(36,top-4,100,title,7.4,INK,True)
         p(138,top-4,160,'shadow, not counted: '+(num(a['value'],0,True) if a.get('value') is not None else 'N/A'),7,TEAL,True)
-        p(302,top-4,255,brief(a.get('reason','No qualified baseline'),65),6.9,MUTED,maxh=10)
+        signal_status='OK' if a.get('value') is not None else 'WITHHELD'
+        p(302,top-4,255,signal_status+' — '+brief(a.get('reason','No qualified baseline'),54),6.9,MUTED,maxh=10)
     section('05','Market headlines / last 12 hours',162)
     headlines=s.get('news') or []
     for i,item in enumerate(headlines[:3]): linked_headline(item,137-i*30)
@@ -157,7 +159,8 @@ def render(s,r,path):
         p(236,top,80,num(a.get('previous_close')),7.3)
         change=num(a.get('change_pct'),2,True)+'%' if a.get('change_pct') is not None else 'N/A'
         p(320,top,80,change,7.3)
-        p(404,top,156,stamp(a.get('asof')) if a.get('value') is not None else brief(a.get('reason','No timely quote'),34),6.6,MUTED,maxh=16)
+        detail='OK • '+stamp(a.get('asof')) if a.get('value') is not None else 'N/A • '+brief(a.get('reason','No timely quote'),28)
+        p(404,top,156,detail,6.6,MUTED,maxh=16)
     p(28,499,539,'N/A previous close or change: the provider did not supply a usable baseline.',6.4,MUTED)
     section('07','Institutional positioning and cash flows',481)
     fii=rows.get('FII index-futures positions') or {}; obs=fii.get('observations') or []

@@ -30,7 +30,8 @@ def make_review(snapshot):
     alerts=[f"Score {score['score']:+d} from {n}/6 signals; {readable_bias}.",
             (f"Futures build-up withheld: {future.get('reason','data unavailable')}." if future.get('value') is None
              else f"Futures build-up is {future.get('reason','classified')}; shadow, not counted."),
-            f"India VIX {vix.get('level','N/A')}; caution {snapshot.get('vix_flag','UNKNOWN')}."]
+            (f"India VIX {vix.get('level')}; caution {snapshot.get('vix_flag','UNKNOWN')}." if vix.get('level') is not None
+             else f"India VIX N/A: {vix.get('reason','previous-session quote unavailable')}.")]
     alerts=[a[:179] for a in alerts]
     return {'schema_version':1,'report_date':snapshot['report_date'],
             'snapshot_sha256':digest(snapshot),'summary':summary,
