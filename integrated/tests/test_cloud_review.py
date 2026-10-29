@@ -44,6 +44,9 @@ class CloudReviewTests(unittest.TestCase):
             root=Path(d);self.setup_root(root)
             self.assertFalse(run(root,self.now-dt.timedelta(minutes=6)))
             self.assertFalse((root/'review_requests').exists())
+    def test_preflight_completion_without_snapshot_is_quiet(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(run(Path(d),dt.datetime(2026,10,28,7,35,tzinfo=IST)))
     def test_closed_session_skips(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.snapshot['trading_day']='CLOSED';self.setup_root(root)
