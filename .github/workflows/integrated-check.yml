@@ -2,7 +2,7 @@ name: Integration offline checks
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, improve/report-v2]
     paths: ['integrated/**', 'nse_report/**', '.github/workflows/integrated-check.yml']
 permissions:
   contents: read
