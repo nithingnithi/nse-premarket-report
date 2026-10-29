@@ -1,0 +1,8 @@
+name = "nse-morning-scheduler"
+main = "src/index.js"
+compatibility_date = "2026-10-29"
+workers_dev = false
+
+[triggers]
+# Cron is UTC: 07:35, 07:45 and 08:00 IST, Monday-Friday.
+crons = ["5 2 * * 1-5", "15 2 * * 1-5", "30 2 * * 1-5"]

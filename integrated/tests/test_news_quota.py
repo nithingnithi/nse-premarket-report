@@ -94,6 +94,27 @@ class NewsQuotaTests(unittest.TestCase):
                 lambda: self.fail('Cache corruption must not trigger another provider call'))
             self.assertEqual((result['status'],state,used),('UNAVAILABLE','INVALID',0))
 
+    def test_transient_failure_is_not_cached(self):
+        now=dt.datetime(2026,10,29,7,55,tzinfo=IST)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'news-2026-10-29.json'
+            result,state,used=collect_news(now.date(),now.replace(minute=45),now,path,
+                lambda:{'status':'FAIL','articles':[],'http_attempts':1})
+            self.assertEqual((result['status'],state,used),('FAIL','NOT_CACHED_TRANSIENT',1))
+            self.assertFalse(path.exists())
+
+    def test_quota_result_is_cached_for_report_date(self):
+        now=dt.datetime(2026,10,29,7,55,tzinfo=IST)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'news-2026-10-29.json'
+            response={'status':'QUOTA','articles':[],'http_attempts':1,
+                      'quota_at_IST':'2026-10-29T07:55:00+05:30'}
+            first,state,used=collect_news(now.date(),now.replace(minute=45),now,path,lambda:response)
+            second,state2,used2=collect_news(now.date(),now.replace(minute=45),now,path,
+                lambda:self.fail('Quota state must be reused'))
+            self.assertEqual((first,second,state,used,state2,used2),
+                             (response,response,'MISS',1,'HIT',0))
+
     def test_quota_notice_in_two_page_pdf(self):
         snapshot=json.loads((Path(__file__).parent/'fixtures/snapshot.json').read_text())
         snapshot.update(news=[],news_status='QUOTA',news_quota_at_IST='2026-10-29T07:51:00+05:30')
@@ -105,5 +126,13 @@ class NewsQuotaTests(unittest.TestCase):
             self.assertEqual(len(pdf.pages),2)
             self.assertIn('News unavailable (quota)',pdf.pages[0].extract_text())
             self.assertIn('07:51 IST',pdf.pages[0].extract_text())
+
+    def test_pdf_states_news_coverage(self):
+        snapshot=json.loads((Path(__file__).parent/'fixtures/snapshot.json').read_text())
+        snapshot.update(news=[],news_status='PARTIAL',news_shown_count=2,news_matched_count=5)
+        review=make_review(snapshot)
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'coverage.pdf';render(snapshot,review,output)
+            self.assertIn('2 shown of 5 matched in the window',PdfReader(output).pages[1].extract_text())
 
 if __name__=='__main__':unittest.main()

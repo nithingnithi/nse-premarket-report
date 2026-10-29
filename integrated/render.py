@@ -188,7 +188,13 @@ def render(s,r,path):
         message=('News unavailable (quota) • '+stamp(s.get('news_quota_at_IST')) if s.get('news_status')=='QUOTA'
                  else 'N/A — No additional eligible headline returned.')
         p(28,261,539,message,7.3,MUTED)
-    p(28,171,539,'News scope: '+brief(s.get('news_note','Selected market queries; coverage may be partial'),108),6.2,MUTED)
+    if s.get('news_status')=='QUOTA':
+        coverage='News coverage unavailable (quota)'
+    else:
+        shown=s.get('news_shown_count',len(headlines))
+        matched=s.get('news_matched_count')
+        coverage=f'{shown} shown of {matched if matched is not None else "N/A"} matched in the window'
+    p(28,171,539,coverage+'  •  '+brief(s.get('news_note','Selected queries; coverage may be partial'),61),6.2,MUTED)
     section('09','Calendar / dates in IST',154)
     options=s.get('options') or {}; expiries=sorted({a.get('expiry') for a in options.values() if isinstance(a,dict) and a.get('expiry')})
     events=s.get('calendar') or []

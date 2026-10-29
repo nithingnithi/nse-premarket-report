@@ -134,7 +134,7 @@ def collect_news(day,cutoff,now,cache_path,fetcher):
             if (cached.get('schema_version')!=1 or cached.get('report_date')!=str(day)
                     or cached.get('cutoff_IST')!=cutoff.isoformat()
                     or not isinstance(result,dict)
-                    or result.get('status') not in ('PASS','PARTIAL','FAIL','QUOTA','UNAVAILABLE')
+                    or result.get('status') not in ('PASS','PARTIAL','QUOTA')
                     or type(result.get('http_attempts',0)) is not int
                     or not 0<=result.get('http_attempts',0)<=news.MAX_REQUESTS):
                 raise ValueError('Invalid dated news cache')
@@ -149,6 +149,8 @@ def collect_news(day,cutoff,now,cache_path,fetcher):
     if type(used) is not int or not 0<=used<=news.MAX_REQUESTS:
         result={'status':'UNAVAILABLE','reason':'News request count invalid','articles':[],'http_attempts':0}
         used=0
+    if result.get('status') not in ('PASS','PARTIAL','QUOTA'):
+        return result,'NOT_CACHED_TRANSIENT',used
     cache_path.parent.mkdir(parents=True,exist_ok=True)
     cache_path.write_text(json.dumps({'schema_version':1,'report_date':str(day),
         'cutoff_IST':cutoff.isoformat(),'response':result},ensure_ascii=False,allow_nan=False))
@@ -245,6 +247,8 @@ def main():
             compact['news_reason']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
                 n.get('reason') or ('Selected queries did not cover the full window' if n.get('status')!='PASS' else None))
             compact['news']=[] if n.get('status')=='QUOTA' else select_news(n.get('articles',[]),cutoff,limit=6)
+            compact['news_matched_count']=len(n.get('articles',[])) if n.get('status')!='QUOTA' else None
+            compact['news_shown_count']=len(compact['news']) if n.get('status')!='QUOTA' else None
             compact['news_note']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
                 'Selected market queries, last 12 hours; incomplete retrieval is labelled.' if n.get('status')!='PASS' else
                 'Selected market queries, last 12 hours.')
