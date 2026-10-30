@@ -12,7 +12,7 @@ IST = ZoneInfo('Asia/Kolkata')
 
 def decision(root, now):
     local = now.astimezone(IST)
-    if local.time() < dt.time(8, 0):
+    if local.time() < dt.time(8, 20):
         return 'TOO_EARLY'
     day = local.date().isoformat()
     snapshot = root / 'handoff' / f'{day}.json'
@@ -27,7 +27,8 @@ def decision(root, now):
     if ledger.exists():
         try:
             data = json.loads(ledger.read_text(encoding='utf-8'))
-            if data.get('report_date') == day and data.get('status') == 'SENT':
+            if (data.get('report_date') == day and data.get('status') == 'SENT'
+                    and re.fullmatch(r'[a-f0-9]{64}', data.get('pdf_sha256') or '')):
                 return 'DELIVERED'
         except (OSError, ValueError, TypeError):
             pass
@@ -61,7 +62,7 @@ def send_private(day, opener=None):
     if not isinstance(destination, dict) or destination.get('type') != 'private' or destination.get('id') != int(chat):
         raise RuntimeError('Configured alert destination is not the verified private chat')
     call('sendMessage', {'chat_id': chat,
-                         'text': f'NSE Morning Report {day}: no verified delivery was recorded by 08:00 IST. The PDF may have sent; inspect the channel and ledger before retrying.'})
+                         'text': f'NSE Morning Report {day}: no verified delivery was recorded by 08:20 IST. The PDF may have sent; inspect the channel and ledger before retrying.'})
 
 
 def main():

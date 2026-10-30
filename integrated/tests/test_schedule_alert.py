@@ -40,16 +40,22 @@ class ScheduleGateTests(unittest.TestCase):
 
 class PrivateAlertTests(unittest.TestCase):
     def test_only_missing_verified_delivery_alerts(self):
-        now = dt.datetime(2026, 10, 29, 8, 0, tzinfo=IST)
+        now = dt.datetime(2026, 10, 29, 8, 20, tzinfo=IST)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.assertEqual(decision(root, now.replace(minute=59, hour=7)), 'TOO_EARLY')
+            self.assertEqual(decision(root, now.replace(minute=19)), 'TOO_EARLY')
             self.assertEqual(decision(root, now), 'ALERT')
             ledger = root / 'delivery_ledger' / '2026-10-29.json'
             ledger.parent.mkdir()
             ledger.write_text(json.dumps({'report_date': '2026-10-29', 'status': 'RESERVED_UNCERTAIN_UNTIL_VERIFIED'}))
             self.assertEqual(decision(root, now), 'ALERT')
             ledger.write_text(json.dumps({'report_date': '2026-10-29', 'status': 'SENT'}))
+            self.assertEqual(decision(root, now), 'ALERT')
+            ledger.write_text(json.dumps({'report_date': '2026-10-28', 'status': 'SENT',
+                                          'pdf_sha256': 'a' * 64}))
+            self.assertEqual(decision(root, now), 'ALERT')
+            ledger.write_text(json.dumps({'report_date': '2026-10-29', 'status': 'SENT',
+                                          'pdf_sha256': 'a' * 64}))
             self.assertEqual(decision(root, now), 'DELIVERED')
             ledger.unlink()
             handoff = root / 'handoff' / '2026-10-29.json'
@@ -76,7 +82,7 @@ class PrivateAlertTests(unittest.TestCase):
         self.assertEqual(len(opener.requests), 2)
         body = json.loads(opener.requests[1].data)
         self.assertEqual(body['chat_id'], '123456')
-        self.assertIn('08:00 IST', body['text'])
+        self.assertIn('08:20 IST', body['text'])
 
     def test_non_private_destination_never_receives_message(self):
         class Response:

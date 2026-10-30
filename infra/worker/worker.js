@@ -1,6 +1,6 @@
 // Single-file Cloudflare Worker. Secrets are bindings, never logged.
 const OWNER = 'nithingnithi/nse-premarket-report';
-const CRONS = { '5 2 * * 1-5': 'preflight', '15 2 * * 1-5': 'collect', '30 2 * * 1-5': 'watchdog' };
+const CRONS = { '5 2 * * 1-5': 'preflight', '15 2 * * 1-5': 'collect', '50 2 * * 1-5': 'watchdog' };
 // 2026 NSE equity/F&O trading holidays. Review annually before the year changes.
 // Sources: https://nsearchives.nseindia.com/content/circulars/FAOP71777.pdf
 // https://www.nseindia.com/resources/exchange-communication-holidays
@@ -57,7 +57,7 @@ export async function run(cron, scheduledTime, env, fetcher = fetch, log = conso
         return 'CONFIRMED_SENT';
     } catch { /* A malformed ledger is unconfirmed, so alert. */ }
   }
-  await alert(env, `NSE report ${date}: confirmed Telegram delivery is absent by 08:00 IST (ledger HTTP ${ledger.status}). Inspect before retrying.`, fetcher, log);
+  await alert(env, `NSE report ${date}: confirmed Telegram delivery is absent by 08:20 IST (ledger HTTP ${ledger.status}). Inspect before retrying.`, fetcher, log);
   return 'ALERT_SENT';
 }
 
