@@ -21,9 +21,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Six Python fixture tests
+      - name: Install offline calendar dependency
+        run: python3 -m pip install -r poc/market_feeds/requirements-offline.txt
+      - name: Python fixture tests
         working-directory: poc/market_feeds
         run: python3 -m unittest -v test_yfinance_probe.py
+      - name: Node chain fixtures
+        working-directory: poc/market_feeds
+        run: node --test test_chain_validation.mjs
       - name: Node disabled-mode smoke test
         working-directory: poc/market_feeds
-        run: node nse_bse_probe.mjs | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(x.status!=="DISABLED"||x.production_scoring_enabled!==false||x.data.length!==0)process.exit(1)})'
+        run: |
+          node nse_bse_probe.mjs | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(x.status!=="DISABLED"||x.production_scoring_enabled!==false||x.data.length!==0)process.exit(1)})'
+          ENABLE_NSE_BSE_PROBE=true node nse_bse_probe.mjs --live | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(x.status!=="DISABLED"||x.data.length!==0)process.exit(1)})'

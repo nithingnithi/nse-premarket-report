@@ -1,12 +1,14 @@
 # Experimental global and NSE/BSE market data probes
 
-**Not integrated with production.** Neither probe is called by GitHub Actions, `integrated/collect.py`, the six-signal model, or the Telegram sender. They never place trades. By default, they make **no network calls**.
+**Not integrated with production.** Offline CI runs fixtures only. A separate manual-only yfinance diagnostic workflow is opt-in and has not been run. Neither probe is called by `integrated/collect.py`, scoring, or Telegram delivery. By default, they make **no network calls**.
 
 ## Offline tests
 
 ```bash
 cd poc/market_feeds
+python3 -m pip install -r requirements-offline.txt
 python3 -m unittest -v test_yfinance_probe.py
+node --test test_chain_validation.mjs
 python3 yfinance_probe.py
 node nse_bse_probe.mjs
 ```
@@ -18,14 +20,14 @@ Only run after confirming applicable data-access and redistribution terms.
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-pip install 'yfinance>=0.2.65,<1'
+pip install -r requirements-live.txt
 python3 yfinance_probe.py --live > yfinance-result.json
-npm install --ignore-scripts --no-audit --no-fund
-ENABLE_NSE_BSE_PROBE=true node nse_bse_probe.mjs --live > nse-bse-result.json
 ```
 
-`yfinance` is unofficial and daily candle timestamps may represent session starts, not independently verified official closes. The `nse-bse-api` project invokes NSE/BSE website endpoints and can fail on a cloud runner or be restricted by exchange terms; do not bypass blocks. Its compiled PCR and max-pain output must **not** be used without an independent audit.
+The manual GitHub workflow is `.github/workflows/poc-yfinance-manual-live.yml`. It has `contents: read`, no secrets or schedule, and keeps a bounded summary artifact for one day. Do not run it until live provider testing is authorized. NSE/BSE live calls remain disabled pending access-terms review; do not bypass provider protections.
 
-`OBSERVED` means only that local checks passed; it is not an exchange-certified price. `STALE`, `UNAVAILABLE` and `DISABLED` never become zeros. Preserve each source and timestamp; validate expiry, units, complete strikes, settlement vs closing price and no future-as-of-cutoff records before any later integration.
+`yfinance` is unofficial. NYSE, JPX and HKEX daily bars are compared with exchange calendar sessions, including weekends, holidays and early closes. `freshness.json` sets per-exchange session lag and post-close delay. An unfinished bar is marked `LIVE_SNAPSHOT` and never used as a completed close. Brent, gold, FX, dollar index and US yield remain unavailable because their instrument-specific session rules are not validated. The optional NSE/BSE chain validator is metadata-only and returns `PARTIAL` even for a complete-looking chain until coverage, OI units and timestamp meaning are independently confirmed. No PCR, max pain or signals are calculated.
+
+`COMPLETED_CLOSE` means only that the bar date matches a calendar session closed before the cutoff plus configured delay; it is not exchange-certified. `LIVE_SNAPSHOT`, `PARTIAL`, `STALE`, `UNAVAILABLE` and `DISABLED` never become zeros. Provider identity and close semantics still require live verification.
 
 To qualify for later production consideration: obtain explicit permission for the intended automated access and redistribution; run tests in the actual GitHub-hosted environment on multiple trading mornings; compare snapshots with official records; document latency and failures. Keep all results outside source control. Production scoring stays unchanged (+3/-3) and new derivatives signals remain shadow-only.

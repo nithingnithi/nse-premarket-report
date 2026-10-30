@@ -1,11 +1,13 @@
 // Optional read-only NSE/BSE experiment. No network access by default.
-const enabled = process.argv.includes('--live') && process.env.ENABLE_NSE_BSE_PROBE === 'true';
+// Deliberately locked until NSE/BSE automated-access terms are reviewed.
+const NSE_BSE_NETWORK_ENABLED = false;
+const enabled = NSE_BSE_NETWORK_ENABLED && process.argv.includes('--live') && process.env.ENABLE_NSE_BSE_PROBE === 'true';
 if (!enabled) {
-  console.log(JSON.stringify({status:'DISABLED',reason:'Requires --live and ENABLE_NSE_BSE_PROBE=true',data:[],production_scoring_enabled:false},null,2));
+  console.log(JSON.stringify({status:'DISABLED',reason:'NSE/BSE network access pending terms review',data:[],production_scoring_enabled:false},null,2));
   process.exit(0);
 }
+const {validateChain} = await import('./chain_validation.mjs');
 const result={status:'PROBE_ONLY',fetched_at:new Date().toISOString(),source:'nse-bse-api (unofficial)',production_scoring_enabled:false,data:[]};
-const validNumber = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
 async function sample(name,fn,validate) {
   try { result.data.push({name,status:'OBSERVED',...validate(await fn())}); }
   catch { result.data.push({name,status:'UNAVAILABLE',reason:'Provider error or invalid data (details withheld)'}); }
@@ -14,23 +16,14 @@ let nse,bse;
 try {
   const pkg=await import('nse-bse-api');
   nse=new pkg.NSE(); bse=new pkg.BSE();
-  await sample('NIFTY option chain V3',()=>nse.optionChainV3({symbol:'NIFTY'}),raw=>{
-    const rows=raw?.records?.data, timestamp=raw?.records?.timestamp;
-    if(!Array.isArray(rows)||!rows.length||!timestamp)throw Error('Missing chain or time');
-    if(!rows.every(r=>validNumber(r.strikePrice)&&Number(r.strikePrice)>0&&
-      (!r.CE||(validNumber(r.CE.openInterest)&&Number(r.CE.openInterest)>=0))&&
-      (!r.PE||(validNumber(r.PE.openInterest)&&Number(r.PE.openInterest)>=0))))
-      throw Error('Invalid strike or OI');
-    return {asof_source:timestamp,rows:rows.length,expiries:[...new Set(rows.map(r=>r.expiryDates).filter(Boolean))],
-      note:'Metadata only; no PCR, max pain or scoring. Validate complete chain against NSE EOD records.'};
-  });
+  await sample('NIFTY option chain V3',()=>nse.optionChainV3({symbol:'NIFTY'}),raw=>validateChain(raw,'NIFTY'));
   await sample('India VIX historical',()=>nse.fetch_historical_vix_data({from_date:new Date(Date.now()-7*86400000),to_date:new Date()}),raw=>{
     if(!Array.isArray(raw)||!raw.length)throw Error('Missing VIX history');
-    return {rows:raw.length,note:'Availability only; price and timestamps require verification'};
+    return {status:'PARTIAL',rows:raw.length,reason:'VIX price, dates and source metadata unverified'};
   });
   await sample('BSE results calendar',()=>bse.resultCalendar({fromDate:new Date(),toDate:new Date(Date.now()+14*86400000)}),raw=>{
     if(!Array.isArray(raw))throw Error('Invalid events');
-    return {rows:raw.length,note:'Event dates not verified'};
+    return {status:'PARTIAL',rows:raw.length,reason:'Event dates and source metadata unverified'};
   });
 } catch {
   result.status='SETUP_OR_PROVIDER_FAILURE'; result.reason='Dependency initialization failed (details withheld)';
