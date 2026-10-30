@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
+import urllib.parse
 from integrated.adapters import flows, global_data, news, calendar, archive
 from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary, vix_caution
 from integrated.shadow_signals import config, build, futures as future_context
@@ -53,6 +54,16 @@ def option_summary(old,new,symbol):
     if identities[0]!=identities[1] or len(lots)!=1:raise ValueError('Contract universe changed')
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
     return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls_previous':x['previous']['call_walls'],'put_walls_previous':x['previous']['put_walls'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
+
+def checked_option(old,new,symbol):
+    def expiries(source):
+        return sorted({r['XpryDt'] for item in source.get('data',[]) if item.get('symbol')==symbol
+                       for r in item.get('source_rows',[]) if r.get('FinInstrmTp')=='IDO'}) if isinstance(source,dict) else []
+    found={'D':expiries(new),'D-1':expiries(old)}
+    try:return option_summary(old,new,symbol)
+    except (KeyError,ValueError,TypeError,IndexError) as exc:
+        first=str(exc)
+        return {'status':'UNAVAILABLE','reason':first,'first_failed_check':first,'expiries_found':found}
 
 def cash_signal(row, sessions):
     """User-approved rule: sign of five completed-session net; no DII offset."""
@@ -101,21 +112,32 @@ def close_change(value, previous):
     except (TypeError, ValueError, InvalidOperation):
         return {'previous_close':None, 'change':None, 'change_pct':None}
 
-def index_close(api, key, expected_session, observed_now):
-    data=api.get('/market-quote/quotes',{'instrument_key':key})
-    item=flows.quote(data,key,observed_now)
-    if item.get('status')!='PASS' or not expected_session:
-        return {'status':'UNAVAILABLE','reason':'Index quote or completed session unavailable'}
+def daily_index_close(api,key,sessions,now):
+    if not isinstance(sessions,list) or len(sessions)<2:
+        return {'status':'UNAVAILABLE','reason':'D and D-1 completed sessions unavailable'}
+    current,previous=sessions[:2]
+    start=(dt.date.fromisoformat(previous)-dt.timedelta(days=7)).isoformat()
+    path='/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'+current+'/'+start
     try:
-        trade=dt.datetime.fromisoformat(item['last_trade_time_IST'])
-        if trade.tzinfo is None or trade.date().isoformat()!=expected_session:
-            raise ValueError('Quote does not belong to last completed session')
-        matches=[r for r in data.values() if isinstance(r,dict) and r.get('instrument_token')==key]
-        if len(matches)!=1:raise ValueError('Index identity ambiguous')
-        return {**item, **close_change(item['last_price'],matches[0].get('cp')),
-                'asof':item['last_trade_time_IST'],'status':'OK'}
-    except (ValueError,TypeError,KeyError):
-        return {'status':'UNAVAILABLE','reason':'Index quote does not belong to last completed session'}
+        payload=api.get(path,version='v3')
+        bars={}
+        for row in payload.get('candles',[]):
+            if not isinstance(row,list) or len(row)<5:raise ValueError('Malformed daily candle')
+            stamp=dt.datetime.fromisoformat(str(row[0]).replace('Z','+00:00'))
+            if stamp.tzinfo is None:raise ValueError('Daily candle timestamp lacks timezone')
+            day=stamp.astimezone(IST).date().isoformat()
+            if day in bars:raise ValueError('Duplicate daily candle for '+day)
+            value=Decimal(str(row[4]))
+            if not value.is_finite() or value<=0:raise ValueError('Invalid daily candle close for '+day)
+            bars[day]=value
+        missing=[d for d in (current,previous) if d not in bars]
+        if missing:return {'status':'UNAVAILABLE','reason':'Daily candle missing for '+', '.join(missing)}
+        change=close_change(bars[current],bars[previous])
+        return {'status':'OK','last_price':str(bars[current]),'asof':current,
+                'change':change['change'],'change_pct':change['change_pct'],
+                'previous_close':change['previous_close'],'source':'daily_candle'}
+    except (KeyError,ValueError,TypeError,InvalidOperation) as exc:
+        return {'status':'UNAVAILABLE','reason':'Daily candle invalid: '+str(exc)}
 
 def redact(x):
     # Defence in depth before either artifact or compact handoff is written.
@@ -187,36 +209,20 @@ def main():
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
                     for symbol in ('NIFTY','BANKNIFTY'):
-                        compact['options'][symbol]=attempt(lambda symbol=symbol:option_summary(full[dates[1]],full[dates[0]],symbol))
+                        compact['options'][symbol]=checked_option(full[dates[1]],full[dates[0]],symbol)
                     compact['archive_sources']=[full[d].get('source') for d in dates]
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
                         net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)},**thresholds))
-                expected=cal['completed_sessions']['NSE'][0] if cal['completed_sessions'].get('NSE') else None
+                sessions=cal['completed_sessions'].get('NSE',[])
                 for name,key in flows.INDICES.items():
                     if name in ('Nifty','Bank Nifty'):
-                        compact['indices'][name]=attempt(lambda key=key:index_close(api,key,expected,now))
-            quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
-            compact['vix']=attempt(lambda:flows.quote(quotes,flows.INDICES['India VIX'],now))
-            try:
-                vt=dt.datetime.fromisoformat(compact['vix']['last_trade_time_IST'])
-                if vt.tzinfo is None or vt>cutoff or vt.date().isoformat()!=compact.get('completed_sessions',{}).get('NSE',[None])[0]:
-                    compact['vix']={'status':'UNAVAILABLE','reason':'Not a confirmed previous-session observation'}
-            except (KeyError,ValueError,TypeError,IndexError):
-                compact['vix']={'status':'UNAVAILABLE'}
-            if compact['vix'].get('status')=='PASS':
-                compact['vix']['level']=compact['vix'].get('last_price')
+                        compact['indices'][name]=attempt(lambda key=key:daily_index_close(api,key,sessions,now))
+            compact['vix']=attempt(lambda:daily_index_close(api,flows.INDICES['India VIX'],compact.get('completed_sessions',{}).get('NSE',[]),now))
+            if compact['vix'].get('status')=='OK':
+                compact['vix']['level']=compact['vix']['last_price']
                 compact['vix_flag']=vix_caution(compact['vix']['level'],threshold=policy['vix_caution_threshold'])
-                try:
-                    matches=[r for r in quotes.values() if isinstance(r,dict) and r.get('instrument_token')==flows.INDICES['India VIX']]
-                    previous=Decimal(str(matches[0].get('cp'))) if len(matches)==1 else None
-                    current=Decimal(str(compact['vix']['level']))
-                    if previous is not None and previous.is_finite() and previous>0 and current.is_finite():
-                        compact['vix']['change_1d']=str(current-previous)
-                        compact['vix']['previous_close']=str(previous)
-                    else:compact['vix']['change_1d']=None
-                except (InvalidOperation,TypeError,ValueError):compact['vix']['change_1d']=None
-                compact['vix']['change_reason']=None if compact['vix']['change_1d'] is not None else 'Previous close unavailable'
+                compact['vix']['change_1d']=compact['vix']['change']
             gapi=attempt(lambda:global_data.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
             if not isinstance(gapi,dict):
                 instruments=attempt(lambda:global_data.instruments(global_data.global_file()))

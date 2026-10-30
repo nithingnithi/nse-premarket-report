@@ -9,12 +9,45 @@ from integrated.cloud_review import make_review
 from integrated.news_selection import select
 from integrated.render import render
 from integrated.shadow_history import append
-from integrated.collect import close_change
+from integrated.collect import close_change,daily_index_close,checked_option
 from integrated.dry_run import unavailable
 
 ROOT=Path(__file__).parent/'fixtures'
 
 class ReportV2Tests(unittest.TestCase):
+    def test_daily_session_closes_ignore_latest_quote(self):
+        class API:
+            def get(self,path,version=None):
+                self.path=path
+                return {'candles':[
+                    ['2026-10-27T00:00:00+05:30',0,0,0,105],
+                    ['2026-10-26T00:00:00+05:30',0,0,0,100]]}
+        api=API();now=dt.datetime(2026,10,28,7,45,tzinfo=dt.timezone(dt.timedelta(hours=5,minutes=30)))
+        result=daily_index_close(api,'NSE_INDEX|Nifty 50',['2026-10-27','2026-10-26'],now)
+        self.assertEqual((result['last_price'],result['change_pct']),('105','5'))
+        self.assertIn('/historical-candle/',api.path)
+        self.assertNotIn('/market-quote/',api.path)
+
+    def test_missing_daily_candle_withheld_with_date(self):
+        class API:
+            def get(self,*args,**kwargs):return {'candles':[['2026-10-27T00:00:00+05:30',0,0,0,105]]}
+        result=daily_index_close(API(),'VIX',['2026-10-27','2026-10-26'],dt.datetime(2026,10,28))
+        self.assertEqual(result['status'],'UNAVAILABLE')
+        self.assertIn('2026-10-26',result['reason'])
+
+    def test_bank_option_failure_keeps_expiries_and_first_check(self):
+        def archive(date,expiry):
+            return {'date':date,'data':[{'symbol':'BANKNIFTY','selected_option_expiry':expiry,
+                'source_rows':[{'FinInstrmTp':'IDO','XpryDt':expiry}]}]}
+        result=checked_option(archive('2026-10-26','2026-11-03'),
+                              archive('2026-10-27','2026-11-10'),'BANKNIFTY')
+        self.assertEqual(result['first_failed_check'],'Expiry changed')
+        self.assertEqual(result['expiries_found']['D'],['2026-11-10'])
+        snapshot=json.loads((ROOT/'snapshot.json').read_text())
+        snapshot['options']={'BANKNIFTY':result}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'bank.pdf';render(snapshot,make_review(snapshot),path)
+            self.assertIn('Bank Nifty withheld: Expiry changed',PdfReader(path).pages[0].extract_text())
     def test_previous_close_change_and_missing_baseline(self):
         self.assertEqual(close_change('105','100')['change_pct'],'5')
         self.assertIsNone(close_change('105',None)['change_pct'])

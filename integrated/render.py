@@ -109,7 +109,7 @@ def render(s,r,path):
     missing=', '.join(k.replace('_',' ') for k in score['missing']) or 'none'
     p(42,639,510,'Missing: '+brief(missing,113),7.4,MUTED,maxh=12)
     vix=s.get('vix') or {}
-    p(42,627,510,'India VIX '+num(vix.get('level'))+'  |  1-day '+num(vix.get('change_1d'),2,True)+'  |  Caution '+val(s.get('vix_flag')),7.4,AMBER,maxh=10)
+    p(42,627,510,'India VIX '+num(vix.get('level'))+'  |  1-day '+num(vix.get('change_pct'),2,True)+'%  |  Caution '+val(s.get('vix_flag')),7.4,AMBER,maxh=10)
     section('01','Three factual alerts',606)
     for i,a in enumerate((r.get('alerts') or [])[:3]):
         x=28+i*183; rect(x,580,173,47,'#FFFFFF')
@@ -122,7 +122,7 @@ def render(s,r,path):
         latest=bars[0] if bars else {}
         context=(s.get('futures_context') or {}).get(key) or {}
         p(x+10,483,245,name,11,INK,True)
-        p(x+10,466,245,'Spot '+num(spot.get('last_price'))+'  ('+num(spot.get('change'),2,True)+')',8.4,TEAL,True)
+        p(x+10,466,245,'Spot '+num(spot.get('last_price'))+'  ('+num(spot.get('change_pct'),2,True)+'%)',8.4,TEAL,True)
         if spot.get('last_price') is None:
             p(x+10,453,245,brief(spot.get('reason','Completed-session quote unavailable'),58),6.5,MUTED)
         p(x+10,440,245,'Future '+('OK ' if latest.get('close') is not None else 'N/A ')+num(latest.get('close'))+'  ('+num(f.get('delta_close'),2,True)+')',8)
@@ -132,6 +132,11 @@ def render(s,r,path):
     section('03','Option levels and distance from spot',381)
     for i,(name,key) in enumerate((('Nifty','NIFTY'),('Bank Nifty','BANKNIFTY'))):
         option_card(28+i*275,name,(s.get('options') or {}).get(key) or {},((s.get('indices') or {}).get(name) or {}).get('last_price'))
+    bank=(s.get('options') or {}).get('BANKNIFTY') or {}
+    if bank.get('first_failed_check'):
+        found=bank.get('expiries_found') or {}
+        foot='Bank Nifty withheld: '+bank['first_failed_check']+'; expiries D '+','.join(found.get('D',[]))+' / D-1 '+','.join(found.get('D-1',[]))
+        p(28,265,539,brief(foot,150),6,MUTED,maxh=8)
     section('04','Shadow signals, not counted',257)
     for i,(key,title) in enumerate((('futures_build_up','Futures'),('pcr_direction','PCR direction'),('strike_walls','Strike walls'))):
         a=(s.get('shadow_signals') or {}).get(key) or {}; top=232-i*21
