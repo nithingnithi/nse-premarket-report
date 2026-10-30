@@ -34,6 +34,8 @@ class ScheduleGateTests(unittest.TestCase):
     def test_late_collection_is_skipped(self):
         now = dt.datetime(2026, 10, 29, 8, 11, tzinfo=IST)
         self.assertFalse(resolve(now, 'schedule')['collect'])
+        late = dt.datetime(2026, 10, 30, 14, 7, tzinfo=IST)
+        self.assertFalse(resolve(late, 'schedule')['collect'])
 
 
 class PrivateAlertTests(unittest.TestCase):
