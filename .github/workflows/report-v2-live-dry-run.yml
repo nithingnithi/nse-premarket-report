@@ -2,16 +2,19 @@ name: Report v2 live-data dry run
 on:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: report-v2-live-dry-run
   cancel-in-progress: false
 jobs:
   collect-and-render:
+    if: github.ref == 'refs/heads/improve/report-v2-deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.ref }}
       - run: python3 -m pip install -r requirements-report.txt
       - name: Collect live provider data
         env:
@@ -20,22 +23,11 @@ jobs:
           FORCE_DRY_RUN_COLLECTION: 'true'
         run: python3 -m integrated.collect
       - name: Append shadow CSV and render dry-run PDF
+        env:
+          DRY_RUN: 'true'
         run: |
           python3 -m integrated.shadow_history
           python3 -m integrated.dry_run
-      - name: Save branch-only shadow history
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- history/shadow-signals.csv
-          for path in handoff/news-*.json; do
-            if [ -f "$path" ]; then git add -- "$path"; fi
-          done
-          if ! git diff --cached --quiet; then
-            git commit -m 'Record report v2 shadow comparison'
-            git -c rebase.autoStash=true pull --rebase origin improve/report-v2
-            git push origin HEAD:improve/report-v2
-          fi
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:

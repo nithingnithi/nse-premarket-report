@@ -1,6 +1,12 @@
 // Single-file Cloudflare Worker. Secrets are bindings, never logged.
 const OWNER = 'nithingnithi/nse-premarket-report';
 const CRONS = { '5 2 * * 1-5': 'preflight', '15 2 * * 1-5': 'collect', '30 2 * * 1-5': 'watchdog' };
+// 2026 NSE equity/F&O trading holidays. Review annually before the year changes.
+// Sources: https://nsearchives.nseindia.com/content/circulars/FAOP71777.pdf
+// https://www.nseindia.com/resources/exchange-communication-holidays
+const HOLIDAYS_2026 = new Set(['2026-01-15','2026-01-26','2026-03-03','2026-03-26',
+  '2026-03-31','2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26',
+  '2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25']);
 const parts = (time) => Object.fromEntries(new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
 }).formatToParts(new Date(time)).map(x => [x.type, x.value]));
@@ -25,15 +31,14 @@ export async function run(cron, scheduledTime, env, fetcher = fetch, log = conso
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[\w.-]+\.ya?ml$/.test(workflow) || !/^[\w./-]+$/.test(ref))
     throw new Error('Invalid Worker configuration');
   if (!env.GITHUB_TOKEN) throw new Error('GitHub token missing');
-  // Holidays apply to all three crons. A failed calendar read fails closed.
-  const holidayResponse = await github(api(repo, 'contents/holidays.json?ref=' + encodeURIComponent(ref)), env.GITHUB_TOKEN, fetcher);
-  if (holidayResponse.status !== 200) throw new Error(`Holiday lookup HTTP ${holidayResponse.status}`);
-  const encoded = await holidayResponse.json();
-  const holidays = JSON.parse(atob(encoded.content.replace(/\s/g, '')));
-  if (!Array.isArray(holidays) || !holidays.every(x => /^\d{4}-\d{2}-\d{2}$/.test(x)))
-    throw new Error('Holiday calendar invalid');
-  if (holidays.includes(date)) return 'HOLIDAY';
+  if (!date.startsWith('2026-')) {
+    log.log(`trading calendar unavailable ${date}`);
+    if (mode === 'watchdog') await alert(env, `NSE report ${date}: trading calendar needs review; delivery status cannot be assumed.`, fetcher, log);
+    return 'CALENDAR_UNKNOWN';
+  }
+  if (HOLIDAYS_2026.has(date)) return 'HOLIDAY';
   if (mode !== 'watchdog') {
+    if (ref !== 'main') throw new Error('Live collection dispatch requires main; use the isolated staging workflow');
     const response = await fetcher(api(repo, `actions/workflows/${workflow}/dispatches`), {
       method: 'POST', headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${env.GITHUB_TOKEN}`,
         'Content-Type': 'application/json', 'User-Agent': 'nse-report-worker' },
@@ -44,16 +49,15 @@ export async function run(cron, scheduledTime, env, fetcher = fetch, log = conso
     return response.status === 204 ? 'DISPATCHED' : 'DISPATCH_FAILED';
   }
   const ledger = await github(api(repo, `contents/delivery_ledger/${date}.json?ref=main`), env.GITHUB_TOKEN, fetcher);
-  if (ledger.status === 200) return 'LEDGER_PRESENT';
-  if (ledger.status !== 404) throw new Error(`Ledger check HTTP ${ledger.status}`);
-  const runs = await github(api(repo, 'actions/runs?branch=main&status=success&per_page=100'), env.GITHUB_TOKEN, fetcher);
-  if (runs.status !== 200) throw new Error(`Run check HTTP ${runs.status}`);
-  const payload = await runs.json();
-  if (!Array.isArray(payload.workflow_runs)) throw new Error('Run list invalid');
-  const success = payload.workflow_runs.some(r => r.path === '.github/workflows/integrated-cloud.yml' &&
-    r.conclusion === 'success' && day(Date.parse(r.created_at)) === date);
-  if (success) return 'CLOUD_SUCCEEDED';
-  await alert(env, `NSE report ${date}: no delivery ledger or successful cloud run by 08:00 IST. Inspect before retrying.`, fetcher, log);
+  if (ledger.status === 200) {
+    try {
+      const payload = await ledger.json();
+      const data = JSON.parse(atob(payload.content.replace(/\s/g,'')));
+      if (data.report_date === date && data.status === 'SENT' && /^[a-f0-9]{64}$/.test(data.pdf_sha256))
+        return 'CONFIRMED_SENT';
+    } catch { /* A malformed ledger is unconfirmed, so alert. */ }
+  }
+  await alert(env, `NSE report ${date}: confirmed Telegram delivery is absent by 08:00 IST (ledger HTTP ${ledger.status}). Inspect before retrying.`, fetcher, log);
   return 'ALERT_SENT';
 }
 
