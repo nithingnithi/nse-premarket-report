@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-10-30",
+  "cutoff_IST": "2026-10-30T07:45:00+05:30",
+  "collected_at_IST": "2026-10-30T14:07:29.626584+05:30",
+  "mode": "PARTIAL_TRIAL",
+  "source_run": "41027687766",
+  "options": {
+    "NIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-03",
+      "strikes": 104,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "1.044142162826039826327654687",
+      "pcr_current": "1.441136739592485875428891190",
+      "pcr_direction": "UP",
+      "call_walls": [
+        "23500.00"
+      ],
+      "put_walls": [
+        "22000.00"
+      ],
+      "max_pain": [
+        "22900.00"
+      ],
+      "call_oi_change": 9794785,
+      "put_oi_change": 62797150
+    },
+    "BANKNIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-23",
+      "strikes": 154,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "0.9351998221915885633230194465",
+      "pcr_current": "0.9698013436046581499597399320",
+      "pcr_direction": "UP",
+      "call_walls": [
+        "57000.00"
+      ],
+      "put_walls": [
+        "58000.00"
+      ],
+      "max_pain": [
+        "55500.00"
+      ],
+      "call_oi_change": 468420,
+      "put_oi_change": 869940
+    }
+  },
+  "global": [
+    {
+      "name": "HANG SENG",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "DOW JONES",
+      "value": 52356.08,
+      "asof": "2026-10-30T01:29:55+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "USD INR",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "Oil (Brent)",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "S&P",
+      "value": 7741.04,
+      "asof": "2026-10-30T01:29:55+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "GIFT NIFTY",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "US Tech 100",
+      "value": 26204.83,
+      "asof": "2026-10-30T01:29:55+05:30",
+      "status": "PROVISIONAL",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "Oil (WTI)",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    },
+    {
+      "name": "NIKKEI 225",
+      "value": null,
+      "asof": null,
+      "status": "UNAVAILABLE",
+      "note": "Benchmark, units and market-session freshness unverified"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Employment Cost Index",
+      "agency": "BLS",
+      "date_IST": "2026-10-30",
+      "scheduled_IST": "2026-10-30T18:00:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    },
+    {
+      "title": "Job Openings and Labor Turnover Survey",
+      "agency": "BLS",
+      "date_IST": "2026-11-03",
+      "scheduled_IST": "2026-11-03T20:30:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    },
+    {
+      "title": "U.S. International Trade in Goods and Services",
+      "agency": "BEA",
+      "date_IST": "2026-11-04",
+      "scheduled_IST": "2026-11-04T19:00:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    },
+    {
+      "title": "Productivity and Costs",
+      "agency": "BLS",
+      "date_IST": "2026-11-05",
+      "scheduled_IST": "2026-11-05T19:00:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    }
+  ],
+  "news": [
+    {
+      "title": "Godrej consumer profit rises 14%, weighs calibrated price hikes to offset inflation",
+      "url": "https://economictimes.indiatimes.com/markets/stocks/earnings/godrej-consumer-profit-rises-14-weighs-calibrated-price-hikes-to-offset-inflation/articleshow/135339162.cms",
+      "published_IST": "2026-10-30T07:44:13.000000+05:30"
+    },
+    {
+      "title": "Amazon fourth quarter sales forecast: Amazon projects fourth quarter sales below estimates",
+      "url": "https://economictimes.indiatimes.com/tech/technology/amazon-projects-fourth-quarter-sales-below-estimates/articleshow/135339275.cms",
+      "published_IST": "2026-10-30T07:44:01.000000+05:30"
+    },
+    {
+      "title": "Global Markets Pivot: Treasuries Rally on Tech Selloff as Geopolitical Risks Propel Oil",
+      "url": "https://www2.stockmarketwatch.com/stock-market-news/global-markets-pivot-treasuries-rally-on-tech-selloff-as-geopolitical-risks-propel-oil/73851/",
+      "published_IST": "2026-10-30T07:38:14.000000+05:30"
+    },
+    {
+      "title": "Australia Private Sector Credit Rises 0.6% In September",
+      "url": "https://www.rttnews.com/3705880/australia-private-sector-credit-rises-0-6-in-september.aspx?type=alleco",
+      "published_IST": "2026-10-30T07:32:22.000000+05:30"
+    },
+    {
+      "title": "Yen steady before BOJ, AI jitters drive Treasury rally, weigh on dollar",
+      "url": "https://economictimes.indiatimes.com/markets/forex/forex-news/yen-steady-before-boj-ai-jitters-drive-treasury-rally-weigh-on-dollar/articleshow/135338954.cms",
+      "published_IST": "2026-10-30T07:31:19.000000+05:30"
+    },
+    {
+      "title": "JustMarkets Examines Whether October Is Really the Most Volatile Month for Financial Markets",
+      "url": "https://www.prnewswire.com/apac/news-releases/justmarkets-examines-whether-october-is-really-the-most-volatile-month-for-financial-markets-302920493.html",
+      "published_IST": "2026-10-30T07:30:00.000000+05:30"
+    }
+  ],
+  "vix_flag": "UNKNOWN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": -1,
+      "fii_cash": 1,
+      "dii_cash": 1
+    },
+    "score": 1,
+    "available": 3,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls"
+    ],
+    "missing_count": 3,
+    "score_range": [
+      -2,
+      4
+    ],
+    "possible_categories": [
+      "NEUTRAL",
+      "BULLISH"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "limitations": [
+    "OI units/calendar pending. Cash: \u20b9 cr per user assumption; no rescaling; unit reconciliation pending.",
+    "Draft trial mapping retained; no added MCP/VIX points.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "OPEN",
+  "flows": [
+    {
+      "check": "NIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61471",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-10-29",
+          "bar_start_IST": "2026-10-29T00:00:00+05:30",
+          "close": "23047.4",
+          "volume": 3480815,
+          "oi_raw": 15813525
+        },
+        {
+          "date": "2026-10-28",
+          "bar_start_IST": "2026-10-28T00:00:00+05:30",
+          "close": "22778.0",
+          "volume": 4885790,
+          "oi_raw": 16049995
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "BANKNIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61466",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-10-29",
+          "bar_start_IST": "2026-10-29T00:00:00+05:30",
+          "close": "55194.6",
+          "volume": 609240,
+          "oi_raw": 2230380
+        },
+        {
+          "date": "2026-10-28",
+          "bar_start_IST": "2026-10-28T00:00:00+05:30",
+          "close": "54549.0",
+          "volume": 613260,
+          "oi_raw": 2322840
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "FII index-futures positions",
+      "status": "PASS",
+      "scope": "Aggregate NSE index futures; not Nifty-only or Bank-Nifty-only.",
+      "observations": [
+        {
+          "date": "2026-10-29",
+          "provider_time_stamp_ms": 1793212200000,
+          "long_contracts": 35686,
+          "short_contracts": 273709,
+          "net_contracts": -238023,
+          "long_divided_by_short": "0.1303793444862974911310917800",
+          "ratio_note": "long / short"
+        },
+        {
+          "date": "2026-10-28",
+          "provider_time_stamp_ms": 1793125800000,
+          "long_contracts": 35808,
+          "short_contracts": 270850,
+          "net_contracts": -235042,
+          "long_divided_by_short": "0.1322060180911943880376592210",
+          "ratio_note": "long / short"
+        }
+      ]
+    },
+    {
+      "check": "FII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-10-29",
+          "provider_time_stamp_ms": 1793212200000,
+          "buy_raw": "13400.29",
+          "sell_raw": "14343.89",
+          "net_raw": "-943.60"
+        },
+        {
+          "date": "2026-10-28",
+          "provider_time_stamp_ms": 1793125800000,
+          "buy_raw": "16834.53",
+          "sell_raw": "15962.7",
+          "net_raw": "871.83"
+        },
+        {
+          "date": "2026-10-27",
+          "provider_time_stamp_ms": 1793039400000,
+          "buy_raw": "24517.65",
+          "sell_raw": "20277.26",
+          "net_raw": "4240.39"
+        },
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "9324.9",
+          "sell_raw": "10787.39",
+          "net_raw": "-1462.49"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "14445.54",
+          "sell_raw": "13557.89",
+          "net_raw": "887.65"
+        }
+      ],
+      "net_sum_last_3_raw": "4168.62",
+      "net_sum_last_5_raw": "3593.78",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    },
+    {
+      "check": "DII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-10-29",
+          "provider_time_stamp_ms": 1793212200000,
+          "buy_raw": "18458.64",
+          "sell_raw": "16534.23",
+          "net_raw": "1924.41"
+        },
+        {
+          "date": "2026-10-28",
+          "provider_time_stamp_ms": 1793125800000,
+          "buy_raw": "17240.9",
+          "sell_raw": "16597.55",
+          "net_raw": "643.35"
+        },
+        {
+          "date": "2026-10-27",
+          "provider_time_stamp_ms": 1793039400000,
+          "buy_raw": "15702.74",
+          "sell_raw": "16952.77",
+          "net_raw": "-1250.03"
+        },
+        {
+          "date": "2026-10-26",
+          "provider_time_stamp_ms": 1792953000000,
+          "buy_raw": "17389.57",
+          "sell_raw": "14780.0",
+          "net_raw": "2609.57"
+        },
+        {
+          "date": "2026-10-23",
+          "provider_time_stamp_ms": 1792693800000,
+          "buy_raw": "19232.31",
+          "sell_raw": "15996.95",
+          "net_raw": "3235.36"
+        }
+      ],
+      "net_sum_last_3_raw": "1317.73",
+      "net_sum_last_5_raw": "7162.66",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    }
+  ],
+  "completed_sessions": {
+    "NSE": [
+      "2026-10-29",
+      "2026-10-28",
+      "2026-10-27",
+      "2026-10-26",
+      "2026-10-23"
+    ],
+    "NFO": [
+      "2026-10-29",
+      "2026-10-28"
+    ]
+  },
+  "archive_sources": [
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261029_F_0000.csv.zip",
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261028_F_0000.csv.zip"
+  ],
+  "futures_validation": "WITHHELD: archive/provider OI and close semantics require reconciliation",
+  "vix": {
+    "status": "UNAVAILABLE",
+    "reason": "Not a confirmed previous-session observation"
+  },
+  "news_status": "PARTIAL",
+  "news_note": "Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.",
+  "calendar_status": "PARTIAL",
+  "collection_status": "PARTIAL",
+  "timing": "LATE_COLLECTION"
+}
