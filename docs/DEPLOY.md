@@ -1,5 +1,7 @@
 # Browser-only deployment checklist
 
+Canonical Worker: `infra/worker/worker.js` only. The `cloudflare/nse-scheduler` Wrangler project is retired; do not deploy it. If an older `nse-morning-scheduler` Worker is already active, disable or delete its triggers before enabling this Worker.
+
 1. Keep `infra/worker/worker.js` on `improve/report-v2-deploy` until its tests and GitHub Actions review pass. Do not enable the Worker before the workflow changes reach `main`.
 2. In GitHub Settings → Developer settings → Personal access tokens, create a fine-grained token for **this repository only**, with Actions **read/write** and Contents **read** (holiday and ledger checks). Set a short expiry. Never paste it into this repository or a chat.
 3. In Cloudflare Workers & Pages, create a Worker, paste the single file `infra/worker/worker.js` into the browser editor, and save it.

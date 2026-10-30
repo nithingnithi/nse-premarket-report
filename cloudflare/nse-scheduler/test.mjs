@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { dispatch } from "./src/index.js";
+import { readFile } from "node:fs/promises";
+import legacyWorker, { dispatch } from "./src/index.js";
+
+const config = await readFile(new URL("./wrangler.toml", import.meta.url), "utf8");
+assert.match(config, /^crons\s*=\s*\[\s*\]$/m);
 
 const seen = [];
 const mockFetch = async (url, options) => {
@@ -17,4 +21,8 @@ assert(seen.every(({ options }) => options.headers.Authorization === "Bearer fix
 assert(seen.every(({ url }) => url.includes("/actions/workflows/")));
 assert.deepEqual(JSON.parse(seen[1].options.body).inputs.report_date, "2026-10-29");
 await assert.rejects(dispatch("unknown", scheduled, "fixture", mockFetch));
+let scheduledCalls = 0;
+assert.equal(await legacyWorker.scheduled({ cron: "30 2 * * 1-5", scheduledTime: scheduled },
+  { GITHUB_ACTIONS_TOKEN: "fixture" }, { waitUntil() { scheduledCalls++; } }), "DISABLED");
+assert.equal(scheduledCalls, 0);
 console.log("Worker dispatch fixture tests passed");

@@ -37,8 +37,7 @@ export async function dispatch(cron, scheduledTime, token, fetcher = fetch) {
 
 export default {
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(dispatch(controller.cron, controller.scheduledTime, env.GITHUB_ACTIONS_TOKEN)
-      .then(({ mode, reportDate }) => console.log(`Dispatched ${mode} for ${reportDate}`))
-      .catch((error) => console.error(error.message)));
+    // Retired scheduler: never dispatch, even if an old deployed Worker retains triggers.
+    return 'DISABLED';
   },
 };
