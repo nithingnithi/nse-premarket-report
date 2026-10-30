@@ -1,0 +1,5 @@
+{
+  "NYSE": {"max_lag_sessions": 0, "settlement_delay_minutes": 30},
+  "JPX": {"max_lag_sessions": 0, "settlement_delay_minutes": 30},
+  "HKEX": {"max_lag_sessions": 0, "settlement_delay_minutes": 30}
+}

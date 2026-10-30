@@ -1,0 +1,1 @@
+{"private":true,"type":"module","description":"Optional read-only NSE/BSE market data probe","dependencies":{"nse-bse-api":"0.1.3"}}

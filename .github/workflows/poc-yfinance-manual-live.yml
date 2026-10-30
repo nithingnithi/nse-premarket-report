@@ -1,0 +1,25 @@
+name: PoC yfinance manual live diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install -r poc/market_feeds/requirements-live.txt
+      - name: Run bounded yfinance diagnostics
+        run: python3 poc/market_feeds/yfinance_probe.py --live > yfinance-diagnostics.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: yfinance-diagnostics
+          path: yfinance-diagnostics.json
+          retention-days: 1
