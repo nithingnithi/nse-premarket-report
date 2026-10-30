@@ -5,6 +5,7 @@ if (!enabled) {
   process.exit(0);
 }
 const result={status:'PROBE_ONLY',fetched_at:new Date().toISOString(),source:'nse-bse-api (unofficial)',production_scoring_enabled:false,data:[]};
+const validNumber = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
 async function sample(name,fn,validate) {
   try { result.data.push({name,status:'OBSERVED',...validate(await fn())}); }
   catch { result.data.push({name,status:'UNAVAILABLE',reason:'Provider error or invalid data (details withheld)'}); }
@@ -16,9 +17,9 @@ try {
   await sample('NIFTY option chain V3',()=>nse.optionChainV3({symbol:'NIFTY'}),raw=>{
     const rows=raw?.records?.data, timestamp=raw?.records?.timestamp;
     if(!Array.isArray(rows)||!rows.length||!timestamp)throw Error('Missing chain or time');
-    if(!rows.every(r=>Number.isFinite(Number(r.strikePrice))&&Number(r.strikePrice)>0&&
-      (!r.CE||(Number.isFinite(Number(r.CE.openInterest))&&Number(r.CE.openInterest)>=0))&&
-      (!r.PE||(Number.isFinite(Number(r.PE.openInterest))&&Number(r.PE.openInterest)>=0))))
+    if(!rows.every(r=>validNumber(r.strikePrice)&&Number(r.strikePrice)>0&&
+      (!r.CE||(validNumber(r.CE.openInterest)&&Number(r.CE.openInterest)>=0))&&
+      (!r.PE||(validNumber(r.PE.openInterest)&&Number(r.PE.openInterest)>=0))))
       throw Error('Invalid strike or OI');
     return {asof_source:timestamp,rows:rows.length,expiries:[...new Set(rows.map(r=>r.expiryDates).filter(Boolean))],
       note:'Metadata only; no PCR, max pain or scoring. Validate complete chain against NSE EOD records.'};
