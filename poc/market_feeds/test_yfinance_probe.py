@@ -12,6 +12,7 @@ import yfinance_probe as probe
 IST = ZoneInfo('Asia/Kolkata')
 NY = ZoneInfo('America/New_York')
 JP = ZoneInfo('Asia/Tokyo')
+HK = ZoneInfo('Asia/Hong_Kong')
 
 
 def frame(symbol, rows):
@@ -52,6 +53,39 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(row['status'], 'COMPLETED_CLOSE')
         self.assertEqual(row['close'], 110)
         self.assertEqual(row['live_snapshot']['value'], 999)
+
+    def test_nan_unfinished_asian_bars_keep_previous_completed_close(self):
+        cutoff = dt.datetime(2026, 10, 30, 7, 45, tzinfo=IST)
+        for name, symbol, market, timezone, zone in (
+            ('Nikkei 225', '^N225', 'JPX', 'Asia/Tokyo', JP),
+            ('Hang Seng', '^HSI', 'HKEX', 'Asia/Hong_Kong', HK),
+        ):
+            with self.subTest(symbol=symbol):
+                bars = frame(symbol, [(dt.datetime(2026, 10, 28, tzinfo=zone), 100.0),
+                                      (dt.datetime(2026, 10, 29, tzinfo=zone), 110.0),
+                                      (dt.datetime(2026, 10, 30, tzinfo=zone), float('nan'))])
+                row = probe.normalize(name, symbol, bars, cutoff,
+                                      schedule(market, '2026-10-27', '2026-10-30'), timezone)
+                self.assertEqual(row['status'], 'COMPLETED_CLOSE')
+                self.assertEqual(row['bar_date'], '2026-10-29')
+                self.assertEqual(row['close'], 110)
+                self.assertEqual(row['previous_close'], 100)
+                self.assertNotIn('live_snapshot', row)
+
+    def test_nan_completed_asian_bar_is_unavailable(self):
+        cutoff = dt.datetime(2026, 10, 30, 18, 0, tzinfo=IST)
+        for name, symbol, market, timezone, zone in (
+            ('Nikkei 225', '^N225', 'JPX', 'Asia/Tokyo', JP),
+            ('Hang Seng', '^HSI', 'HKEX', 'Asia/Hong_Kong', HK),
+        ):
+            with self.subTest(symbol=symbol):
+                bars = frame(symbol, [(dt.datetime(2026, 10, 28, tzinfo=zone), 100.0),
+                                      (dt.datetime(2026, 10, 29, tzinfo=zone), 110.0),
+                                      (dt.datetime(2026, 10, 30, tzinfo=zone), float('nan'))])
+                row = probe.normalize(name, symbol, bars, cutoff,
+                                      schedule(market, '2026-10-27', '2026-10-30'), timezone)
+                self.assertEqual(row['status'], 'UNAVAILABLE')
+                self.assertEqual(row['bar_date'], '2026-10-30')
 
     def test_weekend_uses_friday_session(self):
         cutoff = dt.datetime(2026, 10, 31, 12, 0, tzinfo=IST)

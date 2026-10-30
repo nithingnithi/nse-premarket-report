@@ -69,6 +69,7 @@ def normalize(name, symbol, frame, cutoff, schedule, market_tz,
         return unavailable(name, symbol, 'Invalid exchange session schedule')
     if not sessions:
         return unavailable(name, symbol, 'No exchange sessions in calendar window')
+    delay = dt.timedelta(minutes=settlement_delay_minutes)
     valid = {}
     for stamp, value in zip(stamps, values):
         stamp = stamp.to_pydatetime() if hasattr(stamp, 'to_pydatetime') else stamp
@@ -79,13 +80,14 @@ def normalize(name, symbol, frame, cutoff, schedule, market_tz,
             return unavailable(name, symbol, 'Bar dated on weekend, holiday, or outside calendar window', bar_date=day.isoformat())
         price = positive(value)
         if price is None:
+            if sessions[day] + delay > cutoff_utc:
+                continue
             return unavailable(name, symbol, 'Missing or invalid close', bar_date=day.isoformat())
         if day in valid:
             return unavailable(name, symbol, 'Duplicate daily bar', bar_date=day.isoformat())
         if stamp.astimezone(UTC) > cutoff_utc:
             continue
         valid[day] = price
-    delay = dt.timedelta(minutes=settlement_delay_minutes)
     completed = sorted(day for day, close in sessions.items() if close + delay <= cutoff_utc)
     if not completed:
         return unavailable(name, symbol, 'No completed session by cutoff')
