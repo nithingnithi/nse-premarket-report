@@ -1,6 +1,6 @@
 // Single-file Cloudflare Worker. Secrets are bindings, never logged.
 const OWNER = 'nithingnithi/nse-premarket-report';
-const CRONS = { '5 2 * * 1-5': 'preflight', '15 2 * * 1-5': 'collect', '50 2 * * 1-5': 'watchdog' };
+const CRONS = { '5 2 * * 2-6': 'preflight', '15 2 * * 2-6': 'collect', '50 2 * * 2-6': 'watchdog' };
 // 2026 NSE equity/F&O trading holidays. Review annually before the year changes.
 // Sources: https://nsearchives.nseindia.com/content/circulars/FAOP71777.pdf
 // https://www.nseindia.com/resources/exchange-communication-holidays
