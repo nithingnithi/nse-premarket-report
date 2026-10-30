@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from integrated.collect import clean,digest,option_summary
 from integrated.review import validate,IST
-from integrated.deliver import reserve
+from integrated.deliver import reserve,send_if_current
 from nse_report.calculations import score_summary
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
@@ -43,6 +43,15 @@ class IntegrationTests(unittest.TestCase):
             p=Path(d)/'ledger.json'
             with self.assertRaises(RuntimeError):reserve(p,{},fail)
             self.assertTrue(p.exists())
+    def test_late_after_render_never_starts_telegram_send(self):
+        calls=[]
+        with tempfile.TemporaryDirectory() as d:
+            pdf=Path(d)/'report.pdf';pdf.write_bytes(b'synthetic-pdf')
+            late=self.now+dt.timedelta(minutes=20)
+            with self.assertRaises(ValueError):
+                send_if_current(self.s,self.r,pdf,
+                                sender=lambda *_:calls.append('sent'),clock=lambda:late)
+        self.assertEqual(calls,[])
 if __name__=='__main__':unittest.main()
 
 class RetrievalClockTests(unittest.TestCase):
