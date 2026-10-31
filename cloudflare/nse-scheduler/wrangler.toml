@@ -1,0 +1,8 @@
+name = "nse-morning-scheduler"
+main = "src/index.js"
+compatibility_date = "2026-10-29"
+workers_dev = false
+
+[triggers]
+# Retired scheduler: no cron triggers. Use infra/worker/worker.js instead.
+crons = []

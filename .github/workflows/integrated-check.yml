@@ -2,8 +2,8 @@ name: Integration offline checks
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths: ['integrated/**', 'nse_report/**', '.github/workflows/integrated-check.yml']
+    branches: [main, improve/report-v2, improve/report-v2-deploy]
+    paths: ['integrated/**', 'nse_report/**', 'infra/worker/**', 'cloudflare/nse-scheduler/**', 'docs/DEPLOY.md', '.github/workflows/integrated-check.yml']
 permissions:
   contents: read
 jobs:
@@ -12,9 +12,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
       - run: python3 -m pip install -r requirements-dev.txt
       - run: python3 -m unittest discover -s integrated/tests -v
       - run: python3 -m unittest discover -s tests -p test_calculations.py -v
+      - run: node infra/worker/worker.test.mjs
+      - run: node cloudflare/nse-scheduler/test.mjs
       - name: Synthetic review-to-PDF dry run
         run: |
           mkdir -p handoff review_requests

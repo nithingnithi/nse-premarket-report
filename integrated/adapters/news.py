@@ -21,12 +21,12 @@ UTC = dt.timezone.utc
 ENDPOINT = "https://api.marketaux.com/v1/news/all"
 CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-news report)"
 QUERIES = (
-    ("India market entities", {"countries": "in"}),
-    ("India macro keywords", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
-    ("Global macro keywords", {"search": '"Federal Reserve" | inflation | crude | tariff | Treasury | geopolitics'}),
+    ("India market", {"search": 'India + (RBI | inflation | GDP | rupee | Nifty | Sensex)'}),
+    ("Fed and US", {"search": '"Federal Reserve" | "US inflation" | "US jobs"'}),
+    ("Oil and USD", {"search": '"crude oil" | Brent | "USD/INR" | dollar'}),
 )
-MAX_PAGES = 40  # Unmet provider pagination stays PARTIAL at either bounded limit.
-MAX_REQUESTS = 70  # Includes transient retries; daily free quota is shared across runs.
+MAX_PAGES = 1  # One planned request per category; incomplete pagination stays PARTIAL.
+MAX_REQUESTS = 6  # Hard ceiling; three planned queries, with no automatic retries.
 ERROR_CODES = {"malformed_parameters", "invalid_api_token", "usage_limit_reached", "endpoint_access_restricted",
                "resource_not_found", "invalid_api_endpoint", "rate_limit_reached", "server_error", "maintenance_mode"}
 
@@ -81,50 +81,43 @@ class API:
         # URLs, exception strings, response bodies or provider error messages.
         request = urllib.request.Request(ENDPOINT + "?" + urllib.parse.urlencode({**params, "api_token": self.token}),
                                          headers={"Accept": "application/json", "User-Agent": CLIENT_IDENTITY}, method="GET")
-        for attempt in range(2):
-            if self.last_request_at is not None:
-                pause = self.min_interval - (time.monotonic() - self.last_request_at)
-                if pause > 0:
-                    time.sleep(pause)
-            remaining = self.deadline - time.monotonic()
-            if self.stopped or remaining <= 0 or self.requests >= self.max_requests:
+        if self.last_request_at is not None:
+            pause = self.min_interval - (time.monotonic() - self.last_request_at)
+            if pause > 0:
+                time.sleep(pause)
+        remaining = self.deadline - time.monotonic()
+        if self.stopped or remaining <= 0 or self.requests >= self.max_requests:
+            self.stopped = True
+            raise CheckFailure("The probe stopped at its bounded request/time budget.")
+        self.requests += 1
+        self.last_request_at = time.monotonic()
+        try:
+            with self.opener.open(request, timeout=min(15, remaining)) as response:
+                limit = numeric_header(getattr(response, "headers", {}), "X-RateLimit-Limit")
+                if limit:
+                    self.rate_limit_per_60_seconds = limit
+                    self.min_interval = max(2.2, 60 / limit + 0.2)
+                raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise CheckFailure("News response exceeded the size limit.")
+            data = json.loads(raw)
+            if not isinstance(data, dict) or "error" in data or "errors" in data:
+                raise CheckFailure("Provider returned an error or unexpected JSON envelope; raw details suppressed.")
+            return data
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            provider_code = error_code(exc)
+            exc.close()
+            if code in (401, 402, 403, 429):
                 self.stopped = True
-                raise CheckFailure("The probe stopped at its bounded request/time budget.")
-            self.requests += 1
-            self.last_request_at = time.monotonic()
-            try:
-                with self.opener.open(request, timeout=min(15, remaining)) as response:
-                    limit = numeric_header(getattr(response, "headers", {}), "X-RateLimit-Limit")
-                    if limit:
-                        self.rate_limit_per_60_seconds = limit
-                        self.min_interval = max(2.2, 60 / limit + 0.2)
-                    raw = response.read(2_000_001)
-                if len(raw) > 2_000_000:
-                    raise CheckFailure("News response exceeded the size limit.")
-                data = json.loads(raw)
-                if not isinstance(data, dict) or "error" in data or "errors" in data:
-                    raise CheckFailure("Provider returned an error or unexpected JSON envelope; raw details suppressed.")
-                return data
-            except urllib.error.HTTPError as exc:
-                code = exc.code
-                provider_code = error_code(exc)
-                exc.close()
-                if code in (401, 402, 403, 429):
-                    self.stopped = True
-                    category = {401: "invalid authentication", 402: "plan usage limit reached", 403: "endpoint access restricted",
-                                429: "rolling 60-second rate limit reached"}[code]
-                    raise CheckFailure("HTTP " + str(code) + ": " + category + "; provider_code=" + (provider_code or "unavailable") + "; further requests stopped.") from None
-                if not attempt and 500 <= code <= 599:
-                    time.sleep(2)
-                    continue
-                raise CheckFailure("HTTP " + str(code) + ": news request failed; URL and provider body suppressed.") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if not attempt:
-                    time.sleep(2)
-                    continue
-                raise CheckFailure("Network/TLS request failed; verification was not bypassed.") from None
-            except (ValueError, UnicodeError):
-                raise CheckFailure("News response was not valid JSON; raw details suppressed.") from None
+                category = {401: "invalid authentication", 402: "plan usage limit reached", 403: "endpoint access restricted",
+                            429: "rolling 60-second rate limit reached"}[code]
+                raise CheckFailure("HTTP " + str(code) + ": " + category + "; provider_code=" + (provider_code or "unavailable") + "; further requests stopped.") from None
+            raise CheckFailure("HTTP " + str(code) + ": news request failed; URL and provider body suppressed.") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise CheckFailure("Network/TLS request failed; no automatic retry was attempted.") from None
+        except (ValueError, UnicodeError):
+            raise CheckFailure("News response was not valid JSON; raw details suppressed.") from None
 
 
 def cutoff_for(now):
@@ -296,15 +289,18 @@ def run_checks(api, now, queries=QUERIES):
         except Exception:
             results.append({"check": label, "status": "FAIL", "reason": "Unexpected news schema; raw sensitive details suppressed."})
     unique, duplicates = deduplicate(articles)
+    quota_rows=[row for row in results if str(row.get('reason','')).startswith(('HTTP 429:','HTTP 402:'))]
+    quota=bool(quota_rows)
     return {"checked_at_IST": now.isoformat(), "cutoff_IST": cutoff.isoformat(),
             "window_start_exclusive_IST": (cutoff - dt.timedelta(hours=12)).isoformat(),
-            "status": ("FAIL" if any(row["status"] == "FAIL" for row in results)
+            "status": ("QUOTA" if quota else "FAIL" if any(row["status"] == "FAIL" for row in results)
                        else "PASS" if all(row["status"] == "PASS" for row in results) else "PARTIAL"),
+            "quota_at_IST": dt.datetime.now(IST).isoformat(timespec='seconds') if quota else None,
             "queries": results, "requested_query_count": len(queries), "http_attempts": api.requests,
             "max_http_attempts": getattr(api, "max_requests", MAX_REQUESTS),
             "rate_limit_per_60_seconds": getattr(api, "rate_limit_per_60_seconds", None),
-            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": unique[:12],
-            "summary_article_limit": 12, "coverage": "Selected queries only; not an exhaustive market-news archive.",
+            "unique_articles": len(unique), "duplicates_removed": duplicates, "articles": [] if quota else unique,
+            "coverage": "Selected queries only; not an exhaustive market-news archive.",
             "deduplication": "Provider similar-story grouping plus local UUID, canonical URL and normalized-title matching; paraphrased syndication remains unverified.",
             "date_convention": "Marketaux documents all dates as UTC; displayed in IST.",
             "scope": "Manual access/date/schema test only. No news-derived signal, causal narrative, score, Telegram message or PDF is generated."}
@@ -318,7 +314,7 @@ def main():
         if scope not in ("all", "global_macro"):
             raise CheckFailure("News probe scope must be all or global_macro.")
         queries = QUERIES if scope == "all" else (QUERIES[-1],)
-        budget = MAX_REQUESTS if scope == "all" else 39
+        budget = MAX_REQUESTS
         report = run_checks(API(token, max_requests=budget), now, queries)
     except CheckFailure as exc:
         report = {"status": "FAIL", "reason": str(exc)}

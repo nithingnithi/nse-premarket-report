@@ -240,11 +240,14 @@ def cash_trends(rows, *, participant, expected_sessions, unit, provider):
 SIGNALS = ("futures_build_up", "pcr_direction", "strike_walls", "fii_futures", "fii_cash", "dii_cash")
 
 
-def category(score):
-    return "BULLISH" if score >= 3 else "BEARISH" if score <= -3 else "NEUTRAL"
+def category(score, *, bullish_threshold=3, bearish_threshold=-3):
+    if (type(bullish_threshold) is not int or type(bearish_threshold) is not int
+            or bullish_threshold != 3 or bearish_threshold != -3):
+        raise DataError("Six-signal thresholds must remain +3/-3")
+    return "BULLISH" if score >= bullish_threshold else "BEARISH" if score <= bearish_threshold else "NEUTRAL"
 
 
-def score_summary(signals):
+def score_summary(signals, *, bullish_threshold=3, bearish_threshold=-3):
     """Aggregate explicitly supplied points; does not map data to points."""
     if set(signals) - set(SIGNALS):
         raise DataError("Unknown signal; VIX is separate")
@@ -257,7 +260,7 @@ def score_summary(signals):
     m = len(missing)
     low, high = raw - m, raw + m
     possible = tuple(c for c in ("BEARISH", "NEUTRAL", "BULLISH")
-                     if any(category(s) == c for s in range(low, high + 1)))
+                     if any(category(s, bullish_threshold=bullish_threshold, bearish_threshold=bearish_threshold) == c for s in range(low, high + 1)))
     if len(possible) > 1:
         bias = "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
     else:

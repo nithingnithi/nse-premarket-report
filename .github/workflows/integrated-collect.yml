@@ -3,20 +3,51 @@ on:
   schedule:
     - cron: '15,25 2 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['integrated/**', '.github/workflows/integrated-collect.yml']
+    inputs:
+      mode:
+        description: 'preflight at 07:35 IST or collect at/after 07:45 IST'
+        type: choice
+        options: [preflight, collect]
+        default: collect
+      report_date:
+        description: 'Today in IST (YYYY-MM-DD); blank uses the clock'
+        type: string
+        required: false
+  repository_dispatch:
+    types: [nse_morning_collect]
 permissions:
-  contents: write
-concurrency:
-  group: morning-handoff-collection
-  cancel-in-progress: false
+  contents: read
 jobs:
-  collect:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 2
+    outputs:
+      day: ${{ steps.gate.outputs.day }}
+      collect: ${{ steps.gate.outputs.collect }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Resolve IST report date and mode
+        id: gate
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_REPORT_DATE: ${{ inputs.report_date }}
+          PAYLOAD_MODE: ${{ github.event.client_payload.mode }}
+          PAYLOAD_REPORT_DATE: ${{ github.event.client_payload.report_date }}
+        run: python3 -m integrated.schedule_gate
+  collect:
+    needs: prepare
+    if: needs.prepare.outputs.collect == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    concurrency:
+      group: morning-handoff-${{ needs.prepare.outputs.day }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: main
       - name: Collect bounded snapshot
         env:
           UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}

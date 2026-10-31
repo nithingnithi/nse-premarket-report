@@ -7,16 +7,29 @@ on:
     workflows: ["Collect compact morning handoff"]
     types: [completed]
   workflow_dispatch:
+  repository_dispatch:
+    types: [nse_morning_review]
 permissions:
-  contents: write
-concurrency:
-  group: morning-channel-delivery
-  cancel-in-progress: false
+  contents: read
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      day: ${{ steps.day.outputs.day }}
+    steps:
+      - id: day
+        run: echo "day=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
   review-and-deliver:
+    needs: prepare
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: write
+    concurrency:
+      group: morning-channel-delivery-${{ needs.prepare.outputs.day }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:

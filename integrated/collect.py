@@ -8,8 +8,11 @@ from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
+import urllib.parse
 from integrated.adapters import flows, global_data, news, calendar, archive
-from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary
+from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary, vix_caution
+from integrated.shadow_signals import config, build, futures as future_context
+from integrated.news_selection import select as select_news
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -50,7 +53,17 @@ def option_summary(old,new,symbol):
         chains.append(OptionChain(symbol,expiry,snap['date'],'UNVERIFIED_RAW','NSE_ARCHIVE',tuple(OptionRow(k,p['CE'],p['PE']) for k,p in pairs.items())))
     if identities[0]!=identities[1] or len(lots)!=1:raise ValueError('Contract universe changed')
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
-    return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
+    return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls_previous':x['previous']['call_walls'],'put_walls_previous':x['previous']['put_walls'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
+
+def checked_option(old,new,symbol):
+    def expiries(source):
+        return sorted({r['XpryDt'] for item in source.get('data',[]) if item.get('symbol')==symbol
+                       for r in item.get('source_rows',[]) if r.get('FinInstrmTp')=='IDO'}) if isinstance(source,dict) else []
+    found={'D':expiries(new),'D-1':expiries(old)}
+    try:return option_summary(old,new,symbol)
+    except (KeyError,ValueError,TypeError,IndexError) as exc:
+        first=str(exc)
+        return {'status':'UNAVAILABLE','reason':first,'first_failed_check':first,'expiries_found':found}
 
 def cash_signal(row, sessions):
     """User-approved rule: sign of five completed-session net; no DII offset."""
@@ -81,13 +94,50 @@ def compact_flows(results):
     output=[]
     for r in results if isinstance(results,list) else []:
         if r.get('check')=='Provider session calendar':continue
-        keys=['check','status','reason','scope','instrument_key','expiry','daily_observations','intraday_closed_session_fallback','observations','net_sum_last_3_raw','net_sum_last_5_raw','units']
+        keys=['check','status','reason','scope','instrument_key','expiry','daily_observations','intraday_closed_session_fallback','observations','net_sum_last_3_raw','net_sum_last_5_raw','units','delta_close','delta_oi_raw']
         item={k:r[k] for k in keys if k in r}
         if r.get('check') in ('FII cash','DII cash'):
             item['units']='₹ cr'
-            item['unit_basis']='User-specified assumption; no rescaling; independent reconciliation pending'
+            item['unit_basis']='₹ cr as directed; provider raw values retained without rescaling'
         output.append(item)
     return output
+
+def close_change(value, previous):
+    try:
+        current, prior = Decimal(str(value)), Decimal(str(previous))
+        if not current.is_finite() or not prior.is_finite() or prior <= 0:
+            raise ValueError('Missing positive previous close')
+        return {'previous_close':str(prior), 'change':str(current-prior),
+                'change_pct':str((current-prior)*100/prior)}
+    except (TypeError, ValueError, InvalidOperation):
+        return {'previous_close':None, 'change':None, 'change_pct':None}
+
+def daily_index_close(api,key,sessions,now):
+    if not isinstance(sessions,list) or len(sessions)<2:
+        return {'status':'UNAVAILABLE','reason':'D and D-1 completed sessions unavailable'}
+    current,previous=sessions[:2]
+    start=(dt.date.fromisoformat(previous)-dt.timedelta(days=7)).isoformat()
+    path='/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'+current+'/'+start
+    try:
+        payload=api.get(path,version='v3')
+        bars={}
+        for row in payload.get('candles',[]):
+            if not isinstance(row,list) or len(row)<5:raise ValueError('Malformed daily candle')
+            stamp=dt.datetime.fromisoformat(str(row[0]).replace('Z','+00:00'))
+            if stamp.tzinfo is None:raise ValueError('Daily candle timestamp lacks timezone')
+            day=stamp.astimezone(IST).date().isoformat()
+            if day in bars:raise ValueError('Duplicate daily candle for '+day)
+            value=Decimal(str(row[4]))
+            if not value.is_finite() or value<=0:raise ValueError('Invalid daily candle close for '+day)
+            bars[day]=value
+        missing=[d for d in (current,previous) if d not in bars]
+        if missing:return {'status':'UNAVAILABLE','reason':'Daily candle missing for '+', '.join(missing)}
+        change=close_change(bars[current],bars[previous])
+        return {'status':'OK','last_price':str(bars[current]),'asof':current,
+                'change':change['change'],'change_pct':change['change_pct'],
+                'previous_close':change['previous_close'],'source':'daily_candle'}
+    except (KeyError,ValueError,TypeError,InvalidOperation) as exc:
+        return {'status':'UNAVAILABLE','reason':'Daily candle invalid: '+str(exc)}
 
 def redact(x):
     # Defence in depth before either artifact or compact handoff is written.
@@ -96,13 +146,49 @@ def redact(x):
         if token:x=news.redact(x,token)
     return x
 
+def collect_news(day,cutoff,now,cache_path,fetcher):
+    """Reuse one validated, credential-free news result for a report date."""
+    cache_path=Path(cache_path)
+    if cache_path.exists():
+        try:
+            cached=json.loads(cache_path.read_text())
+            result=cached['response']
+            if (cached.get('schema_version')!=1 or cached.get('report_date')!=str(day)
+                    or cached.get('cutoff_IST')!=cutoff.isoformat()
+                    or not isinstance(result,dict)
+                    or result.get('status') not in ('PASS','PARTIAL','QUOTA')
+                    or type(result.get('http_attempts',0)) is not int
+                    or not 0<=result.get('http_attempts',0)<=news.MAX_REQUESTS):
+                raise ValueError('Invalid dated news cache')
+            return result,'HIT',0
+        except (OSError,ValueError,KeyError,TypeError):
+            return {'status':'UNAVAILABLE','reason':'Dated news cache invalid; no new requests made',
+                    'articles':[],'http_attempts':0},'INVALID',0
+    result=redact(attempt(fetcher))
+    if not isinstance(result,dict):
+        result={'status':'UNAVAILABLE','reason':'News response invalid','articles':[],'http_attempts':0}
+    used=result.get('http_attempts',0)
+    if type(used) is not int or not 0<=used<=news.MAX_REQUESTS:
+        result={'status':'UNAVAILABLE','reason':'News request count invalid','articles':[],'http_attempts':0}
+        used=0
+    if result.get('status') not in ('PASS','PARTIAL','QUOTA'):
+        return result,'NOT_CACHED_TRANSIENT',used
+    cache_path.parent.mkdir(parents=True,exist_ok=True)
+    cache_path.write_text(json.dumps({'schema_version':1,'report_date':str(day),
+        'cutoff_IST':cutoff.isoformat(),'response':result},ensure_ascii=False,allow_nan=False))
+    return result,'MISS',used
+
 def main():
     now=dt.datetime.now(IST);cutoff=now.replace(hour=7,minute=45,second=0,microsecond=0)
+    policy=config()
+    thresholds={'bullish_threshold':policy['bullish_threshold'],'bearish_threshold':policy['bearish_threshold']}
     if now<cutoff:raise SystemExit('Not yet at report cutoff; no previous-day substitution')
     day=now.date();target=Path('handoff')/(str(day)+'.json')
-    if target.exists():
-        print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    if target.exists() and os.environ.get('FORCE_DRY_RUN_COLLECTION')!='true':
+        print('Snapshot already exists; no repeat provider requests')
+        print('NEWS_REQUESTS_USED 0 CACHE SNAPSHOT')
+        return
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'indices':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','shadow_signals':{},'score':clean(score_summary({},**thresholds)),'limitations':['Some fields may be unavailable at the report cutoff.','PCR and OI walls use related option data.','No DII offset is applied to FII cash.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -118,26 +204,25 @@ def main():
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
-                compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
+                compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE']),**thresholds))
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
                     for symbol in ('NIFTY','BANKNIFTY'):
-                        compact['options'][symbol]=attempt(lambda symbol=symbol:option_summary(full[dates[1]],full[dates[0]],symbol))
+                        compact['options'][symbol]=checked_option(full[dates[1]],full[dates[0]],symbol)
                     compact['archive_sources']=[full[d].get('source') for d in dates]
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
-                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)}))
-                    # Withhold futures until source consistency is established. Keep observations for audit.
-                    compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
-            quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
-            compact['vix']=attempt(lambda:flows.quote(quotes,flows.INDICES['India VIX'],now))
-            try:
-                vt=dt.datetime.fromisoformat(compact['vix']['last_trade_time_IST'])
-                if vt.tzinfo is None or vt>cutoff or vt.date().isoformat()!=compact.get('completed_sessions',{}).get('NSE',[None])[0]:
-                    compact['vix']={'status':'UNAVAILABLE','reason':'Not a confirmed previous-session observation'}
-            except (KeyError,ValueError,TypeError,IndexError):
-                compact['vix']={'status':'UNAVAILABLE'}
+                        net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)},**thresholds))
+                sessions=cal['completed_sessions'].get('NSE',[])
+                for name,key in flows.INDICES.items():
+                    if name in ('Nifty','Bank Nifty'):
+                        compact['indices'][name]=attempt(lambda key=key:daily_index_close(api,key,sessions,now))
+            compact['vix']=attempt(lambda:daily_index_close(api,flows.INDICES['India VIX'],compact.get('completed_sessions',{}).get('NSE',[]),now))
+            if compact['vix'].get('status')=='OK':
+                compact['vix']['level']=compact['vix']['last_price']
+                compact['vix_flag']=vix_caution(compact['vix']['level'],threshold=policy['vix_caution_threshold'])
+                compact['vix']['change_1d']=compact['vix']['change']
             gapi=attempt(lambda:global_data.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
             if not isinstance(gapi,dict):
                 instruments=attempt(lambda:global_data.instruments(global_data.global_file()))
@@ -151,15 +236,42 @@ def main():
                             t=dt.datetime.fromisoformat(stamp);eligible=t.tzinfo is not None and cutoff-dt.timedelta(hours=18)<=t<=cutoff
                             if 'bar_start_IST' in r:eligible=eligible and t+dt.timedelta(minutes=1)<=cutoff
                         except (ValueError,TypeError):pass
-                        compact['global'].append({'name':name,'value':r.get('last_price',r.get('last_closed_minute_price')) if eligible else None,'asof':stamp if eligible else None,'status':'PROVISIONAL' if eligible else 'UNAVAILABLE','note':'Benchmark, units and market-session freshness unverified'})
-            news.MAX_PAGES=2
-            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=6),now));full['news']=n
+                        value=r.get('last_price',r.get('last_closed_minute_price')) if eligible else None
+                        prior=r.get('previous_close_raw',r.get('ohlc_close_raw')) if eligible else None
+                        comparison=close_change(value,prior)
+                        compact['global'].append({'name':name,'value':value,'asof':stamp if eligible else None,
+                            **comparison,'status':'OK' if eligible else 'UNAVAILABLE',
+                            'reason':None if eligible else r.get('reason','No observation within cutoff window'),
+                            'change_reason':None if comparison['change_pct'] is not None else 'Previous close not supplied by this quote'})
+            n,cache_state,used=collect_news(day,cutoff,now,Path('handoff')/('news-'+str(day)+'.json'),
+                lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=news.MAX_REQUESTS),now))
+            full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
-            compact['news']=[{k:r.get(k) for k in ('title','url','published_IST')} for r in n.get('articles',[])[:6]]
-            compact['news_note']='Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.'
+            compact['news_cache']=cache_state
+            compact['news_requests_used']=used
+            compact['news_quota_at_IST']=n.get('quota_at_IST')
+            compact['news_reason']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
+                n.get('reason') or ('Selected queries did not cover the full window' if n.get('status')!='PASS' else None))
+            compact['news']=[] if n.get('status')=='QUOTA' else select_news(n.get('articles',[]),cutoff,limit=6)
+            compact['news_matched_count']=len(n.get('articles',[])) if n.get('status')!='QUOTA' else None
+            compact['news_shown_count']=len(compact['news']) if n.get('status')!='QUOTA' else None
+            compact['news_note']=('News unavailable (quota)' if n.get('status')=='QUOTA' else
+                'Selected market queries, last 12 hours; incomplete retrieval is labelled.' if n.get('status')!='PASS' else
+                'Selected market queries, last 12 hours.')
             c=attempt(lambda:calendar.run(now));full['calendar']=c
-            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in c.get('events',[])[:6]]
+            important=('employment situation','consumer price','gross domestic product','personal income','fomc')
+            selected=[r for r in c.get('events',[]) if
+                      (r.get('agency')=='RBI' and 'monetary policy' in r.get('title','').casefold()) or
+                      (r.get('agency')=='MoSPI' and 'consumer price' in r.get('title','').casefold()) or
+                      (r.get('agency') in ('BLS','BEA','Federal Reserve') and any(k in r.get('title','').casefold() for k in important))]
+            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in selected[:6]]
             compact['calendar_status']='PARTIAL'
+            compact['calendar_reason']=c.get('reason') or ('No selected dated event was returned' if not compact['calendar'] else None)
+    compact['shadow_signals']=build(full.get('flows'),compact['options'].get('NIFTY'),compact.get('completed_sessions',{}).get('NFO',[]),str(day),policy['shadow_signals_enabled'])
+    flow_rows=full.get('flows') if isinstance(full.get('flows'),list) else []
+    nfo_days=compact.get('completed_sessions',{}).get('NFO',[])
+    compact['futures_context']={name:future_context(next((row for row in flow_rows if row.get('check')==name+' futures'),None),nfo_days,str(day))
+                                for name in ('NIFTY','BANKNIFTY')}
     compact['collection_status']=compact.get('collection_status','PARTIAL' if compact['trading_day']=='OPEN' else compact['trading_day'])
     compact['timing']='ON_TIME_COLLECTION' if now<=cutoff+dt.timedelta(minutes=10) else 'LATE_COLLECTION'
     compact=redact(compact);full=redact(full)
@@ -168,6 +280,9 @@ def main():
     Path('out').mkdir(exist_ok=True);Path('out/raw-snapshot.json').write_text(json.dumps(clean(full),allow_nan=False))
     Path('handoff/latest.json').write_text(json.dumps({'report_date':str(day),'path':str(target),'snapshot_sha256':digest(compact),'status':compact['collection_status'],'trading_day':compact['trading_day']},indent=2))
     print('HANDOFF_READY',compact['collection_status'],'compact_bytes',target.stat().st_size)
+    print('NEWS_REQUESTS_USED',compact.get('news_requests_used',0),'CACHE',compact.get('news_cache','NONE'))
     if os.environ.get('GITHUB_STEP_SUMMARY'):
-        Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Collection completed\n\nData status: '+compact['collection_status']+'\n\nCompact handoff saved; missing fields remain unavailable. No report sent.\n')
+        Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Collection completed\n\nData status: '+compact['collection_status']+
+            '\n\nNews requests used this run: '+str(compact.get('news_requests_used',0))+
+            '; cache: '+compact.get('news_cache','NONE')+'.\n\nCompact handoff saved; missing fields remain unavailable. No report sent.\n')
 if __name__=='__main__':main()

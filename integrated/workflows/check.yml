@@ -1,0 +1,29 @@
+name: Integration offline checks
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, improve/report-v2]
+    paths: ['integrated/**', 'nse_report/**', '.github/workflows/integrated-check.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - run: python3 -m pip install -r requirements-dev.txt
+      - run: python3 -m unittest discover -s integrated/tests -v
+      - run: python3 -m unittest discover -s tests -p test_calculations.py -v
+      - name: Synthetic review-to-PDF dry run
+        run: |
+          mkdir -p handoff review_requests
+          cp integrated/tests/fixtures/snapshot.json handoff/2026-10-28.json
+          cp integrated/tests/fixtures/review.json review_requests/2026-10-28.json
+          DRY_RUN=true REPORT_DATE=2026-10-28 python3 -m integrated.deliver
+          python3 -c 'from pypdf import PdfReader; assert len(PdfReader("out/nse-report-2026-10-28.pdf").pages)==2'
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: synthetic-integration-pdf
+          path: out/*.pdf
+          retention-days: 7

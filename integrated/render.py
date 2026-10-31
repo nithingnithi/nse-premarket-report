@@ -1,142 +1,222 @@
-"""Two-page editorial briefing. Visual formatting only; no scoring changes."""
+"""Two-page rules-based briefing. Rendering never changes the official score."""
+import datetime as dt
+from decimal import Decimal, InvalidOperation
 from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
-from decimal import Decimal,InvalidOperation
-import datetime as dt
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
-NAVY='#102C3C';TEAL='#007F7B';INK='#173343';MUTED='#536C78';PAPER='#F2F5F5';LINE='#D5E1E3';AMBER='#9A6200'
-def text(v):
-    if v is None or v==[] or v=='':return 'N/A'
-    if isinstance(v,(tuple,list)):return ', '.join(text(x) for x in v)
-    return escape(str(v))
-def number(v,places=2):
-    if v is None:return 'N/A'
-    if isinstance(v,(list,tuple)):return ', '.join(number(x,places) for x in v)
+
+NAVY='#102C3C'; TEAL='#007F7B'; INK='#173343'; MUTED='#536C78'; PAPER='#F2F5F5'; AMBER='#9A6200'
+IST=dt.timezone(dt.timedelta(hours=5,minutes=30))
+
+def val(x):
+    if x is None or x=='' or x==[]: return 'N/A'
+    if isinstance(x,(list,tuple)): return ', '.join(val(y) for y in x)
+    return str(x)
+
+def num(x,places=2,sign=False):
     try:
-        d=Decimal(str(v))
-        if not d.is_finite():return 'N/A'
-        return f'{d:,.{places}f}'.rstrip('0').rstrip('.') if places else f'{d:,.0f}'
-    except (InvalidOperation,ValueError):return text(v)
-def stamp(v):
-    if not v:return 'N/A'
+        if x is None: return 'N/A'
+        d=Decimal(str(x))
+        if not d.is_finite(): return 'N/A'
+        result=f'{d:,.{places}f}'
+        if places: result=result.rstrip('0').rstrip('.')
+        return ('+' if sign and d>0 else '')+result
+    except (InvalidOperation,ValueError,TypeError): return 'N/A'
+
+def brief(x,limit=90):
+    s=val(x).replace('\n',' ').strip()
+    return s if len(s)<=limit else s[:limit-1].rstrip()+'…'
+
+def stamp(x):
     try:
-        d=dt.datetime.fromisoformat(v);return d.strftime('%d %b %H:%M')+' IST'
-    except (ValueError,TypeError):return text(v)
+        d=dt.datetime.fromisoformat(x)
+        return d.astimezone(IST).strftime('%d %b %H:%M IST') if d.tzinfo else 'N/A'
+    except (ValueError,TypeError): return 'N/A'
+
+def distance(level,spot):
+    try:
+        if isinstance(level,(tuple,list)):
+            if len(level)!=1: return 'N/A (tied level)'
+            level=level[0]
+        if level is None or spot is None: return 'N/A (spot or level missing)'
+        d=Decimal(str(level))-Decimal(str(spot))
+        if not d.is_finite(): raise ValueError
+        return num(d,0,True)+' pts'
+    except (InvalidOperation,ValueError,TypeError): return 'N/A (spot or level missing)'
+
+def level_text(level):
+    if isinstance(level,(tuple,list)):
+        return num(level[0],0) if len(level)==1 else 'N/A (tied level)' if level else 'N/A (missing level)'
+    return num(level,0)
+
 def render(s,r,path):
-    Path(path).parent.mkdir(parents=True,exist_ok=True)
-    for font_path in ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/System/Library/Fonts/Supplemental/Georgia.ttf'):
-        if Path(font_path).exists():
-            font=TTFont('CashCurrency',font_path)
+    path=Path(path); path.parent.mkdir(parents=True,exist_ok=True)
+    for candidate in ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/System/Library/Fonts/Supplemental/Georgia.ttf'):
+        if Path(candidate).exists():
+            font=TTFont('CashCurrency',candidate)
             if 0x20B9 in font.face.charToGlyph:
-                pdfmetrics.registerFont(font);break
-    else:raise ValueError('A font supporting the rupee symbol is required')
-    c=canvas.Canvas(str(path),pagesize=(595,842));c.setTitle('NSE Morning Brief | '+s['report_date'])
-    def rect(x,top,w,h,fill,radius=0):
-        c.setFillColor(HexColor(fill));c.setStrokeColor(HexColor(fill))
-        c.roundRect(x,top-h,w,h,radius,fill=1,stroke=0)
-    def p(value,x,top,w,size=9,color=INK,bold=False,maxh=None):
-        style=ParagraphStyle('p',fontName='Helvetica-Bold' if bold else 'Helvetica',fontSize=size,leading=size*1.3,textColor=HexColor(color))
-        value=value.replace('₹','<font name="CashCurrency">₹</font>')
-        para=Paragraph(value,style);_,h=para.wrap(w,800)
-        if maxh and h>maxh:
-            # Never silently crop or shrink text to an unreadable size.
-            raise ValueError('Report text exceeds its reserved layout; shorten the review')
-        para.drawOn(c,x,top-h);return h
-    def label(value,x,top,w=530):p(value.upper(),x,top,w,8,TEAL,True)
-    def section(n,title,top):
-        rect(28,top,22,19,TEAL,4);p(n,32,top-3,16,9,'#FFFFFF',True)
-        p(title,59,top-1,508,12,INK,True)
-    def base(page,title,kicker):
-        rect(0,842,595,842,PAPER);rect(0,842,595,113,NAVY)
-        rect(28,815,4,49,'#36D2BA')
-        p('NSE / MORNING BRIEF',43,815,440,10,'#76DCCD',True)
-        p(title,42,795,500,27,'#FFFFFF',True)
-        p(kicker,43,754,505,9,'#BDD1D9')
-        c.setStrokeColor(HexColor(LINE));c.line(28,28,567,28)
-        p('PARTIAL TRIAL  /  Evidence before conviction',28,20,440,7,MUTED)
-        p(f'{page:02d} / 02',525,20,45,7,MUTED,True)
-    day=dt.date.fromisoformat(s['report_date']).strftime('%d %B %Y')
-    base(1,'The market, in perspective.',day+'  |  07:45 IST cutoff  |  Selected data, explicit gaps')
-    q=s['score'];rect(28,714,539,78,'#FFFFFF',8);label('The call',42,702)
-    bias=q['bias'];headline='Insufficient data for final bias' if bias=='INSUFFICIENT DATA TO ASSIGN FINAL BIAS' else bias.title()
-    p(text(headline),42,685,510,19,INK,True)
-    p('Available signals are incomplete. Read the score together with its possible range.' if q['available']<6 else 'All six signals are available. The VIX caution remains a separate check.',42,654,505,8.5,MUTED)
-    for i,(tag,value,note) in enumerate([
-        ('RAW SCORE',str(q['score']),'Possible range ['+text(q['score_range'])+']'),
-        ('COVERAGE',f'{q["available"]} / 6','Valid signals; missing is not zero'),
-        ('VIX CAUTION',text(s.get('vix_flag','UNKNOWN')),'Separate from directional score')]):
-        x=28+i*183;rect(x,624,173,79,'#FFFFFF',7);label(tag,x+12,613,149)
-        p(value,x+12,594,149,25 if i<2 else 16,TEAL if i==1 else INK,True)
-        p(note,x+12,560,150,7.5,MUTED)
-    names=[('futures_build_up','Futures'),('pcr_direction','PCR'),('strike_walls','OI walls'),('fii_futures','FII futures'),('fii_cash','FII cash'),('dii_cash','DII cash')]
-    label('Signal ledger',28,533)
-    for i,(key,name) in enumerate(names):
-        x=28+i*91;v=q['signals'][key];rect(x,518,84,39,'#E6EEEE' if v is None else '#D6EEE8',5)
-        p(name,x+7,511,72,8,INK,True);p('MISSING' if v is None else f'{v:+d}',x+7,497,72,7.5,MUTED if v is None else TEAL)
-    section('01','Three things to know',465)
-    for i,a in enumerate(r['alerts']):
-        x=28+i*183;rect(x,437,173,82,'#FFFFFF',6);p(f'0{i+1}',x+10,427,25,11,AMBER,True)
-        p(text(a),x+10,406,153,8.5,maxh=48)
-    section('02','The read-through',342)
-    p(text(r['summary']),28,314,539,9.3,maxh=119)
-    section('03','News radar / last 12 hours',183)
-    news=s.get('news',[])[:6]
-    if not news:p('N/A / No eligible stories supplied.',28,155,539,9,MUTED)
-    for i,a in enumerate(news):
-        x=28+(i%2)*275;top=155-(i//2)*39
-        url=a.get('url') or '';parsed=urlsplit(url)
-        title=text(str(a.get('title') or 'N/A')[:160])
-        if parsed.scheme in ('https','http') and parsed.netloc:title=f'<link href="{escape(url,quote=True)}" color="{TEAL}">{title}</link>'
-        p(stamp(a.get('published_IST')),x,top,261,6.5,MUTED)
-        p(title,x,top-10,261,8,maxh=27)
-    p('Selected-query sample; linked headlines retain source wording. Syndicated duplicates may remain.',28,34,539,6.5,MUTED)
-    c.showPage();base(2,'The numbers behind the view.',day+'  |  Source observations  |  N/A means unavailable')
-    section('04','Across markets',712)
-    # A true table with aligned values and timestamps; no fabricated sparklines.
-    for i,(name,x,w) in enumerate([('MARKET',38,150),('VALUE',198,100),('AS OF',311,140),('STATUS',466,90)]):label(name,x,683,w)
-    rows=s.get('global',[]) or [{'name':'Global data','value':None,'status':'UNAVAILABLE'}]
-    for i,a in enumerate(rows[:9]):
-        top=666-i*15
-        if i%2==0:rect(28,top+2,539,15,'#FFFFFF')
-        p(text(a['name']),38,top,152,8.3);p(number(a.get('value')),198,top,105,8.3,INK,True)
-        p(stamp(a.get('asof')),311,top,146,7.5,MUTED);p(text(a.get('status')),466,top,93,7,TEAL if a.get('value') is not None else MUTED)
-    section('05','Options / provisional archive levels',520)
-    for i,name in enumerate(('NIFTY','BANKNIFTY')):
-        a=s.get('options',{}).get(name,{});x=28+i*275;rect(x,492,264,107,'#FFFFFF',7)
-        p(name,x+12,481,130,12,INK,True);p('EXP '+text(a.get('expiry')),x+135,479,118,7.5,MUTED)
-        p('PCR '+number(a.get('pcr_current'),3),x+12,457,118,15,TEAL,True)
-        p('Max pain '+number(a.get('max_pain')),x+132,454,120,8.5,INK,True)
-        p('Call OI wall: '+number(a.get('call_walls'))+'<br/>Put OI wall: '+number(a.get('put_walls')),x+12,434,238,8.5,maxh=25)
-        p('OI change / C '+number(a.get('call_oi_change'),0)+' | P '+number(a.get('put_oi_change'),0),x+12,403,239,7.3,MUTED)
-    section('06','Positioning & flows',372)
-    f=s.get('flows',[])
-    for i,a in enumerate(f[:5]):
-        top=345-i*17
-        if i%2==0:rect(28,top+2,539,17,'#FFFFFF')
-        p(text(a['check']),36,top,151,8,INK,True)
-        obs=a.get('observations',[]);v=obs[0] if obs else {}
-        if 'index-futures' in a['check']:detail='L '+number(v.get('long_contracts'),0)+' / S '+number(v.get('short_contracts'),0)+' / net '+number(v.get('net_contracts'),0)+' / L:S '+number(v.get('long_divided_by_short'),3)
-        elif 'cash' in a['check']:detail='3D (₹ cr) '+number(a.get('net_sum_last_3_raw'))+' / 5D (₹ cr) '+number(a.get('net_sum_last_5_raw'))
-        else:detail='Score withheld / source consistency pending'
-        p(text(a['status']),190,top,53,7.2,MUTED);p(detail,247,top,312,7.8,maxh=15)
-    if not f:p('N/A / Flow observations unavailable.',36,345,520,8.5,MUTED)
-    section('07','On the calendar / selected events',247)
-    for i,a in enumerate(s.get('calendar',[])[:4]):
-        top=220-i*15;p(stamp(a.get('scheduled_IST')) if a.get('scheduled_IST') else text(a.get('date_IST')),28,top,140,7.5,MUTED)
-        p(text(a.get('title')),171,top,396,8,maxh=14)
-    if not s.get('calendar'):p('N/A / Calendar coverage unavailable.',28,220,539,8.5,MUTED)
-    rect(28,150,539,53,'#E0EEEA',6);label('MCP / dated context',39,142)
-    ctx=r.get('mcp_context',[])
-    content=' '.join(text(x['source'])+' / '+text(x['data_date'])+': '+text(x['text']) for x in ctx) if ctx else 'N/A / No eligible MCP context supplied.'
-    p(content,39,127,517,8,maxh=28)
-    p('READ WITH THESE LIMITS',28,87,539,7,AMBER,True)
-    p(' '.join(text(x) for x in s.get('limitations',[])),28,75,539,7,maxh=28)
-    sessions=s.get('completed_sessions',{}).get('NFO')
-    p('Sessions: '+text(sessions)+' | Collected '+stamp(s.get('collected_at_IST')),28,41,539,6.5,MUTED)
+                pdfmetrics.registerFont(font); break
+    else: raise ValueError('Rupee font unavailable')
+    c=canvas.Canvas(str(path),pagesize=(595,842)); c.setTitle('NSE Morning Brief | '+s['report_date'])
+    def rect(x,y,w,h,color):
+        c.setFillColor(HexColor(color)); c.roundRect(x,y-h,w,h,5,stroke=0,fill=1)
+    def p(x,y,w,content,size=8,color=INK,bold=False,maxh=None):
+        safe=escape(val(content)).replace('₹','<font name="CashCurrency">₹</font>')
+        style=ParagraphStyle('body',fontName='Helvetica-Bold' if bold else 'Helvetica',fontSize=size,leading=size*1.22,textColor=HexColor(color))
+        obj=Paragraph(safe,style); _,h=obj.wrap(w,842)
+        if maxh and h>maxh: raise ValueError('PDF section overflow')
+        obj.drawOn(c,x,y-h); return h
+    def section(n,title,y):
+        rect(28,y,20,18,TEAL); p(33,y-3,13,n,8,'#FFFFFF',True)
+        p(57,y-1,505,title,11,INK,True)
+    def base(page,title):
+        rect(0,842,595,842,PAPER); rect(0,842,595,112,NAVY)
+        rect(28,814,4,49,'#36D2BA')
+        p(43,814,450,'NSE / MORNING BRIEF',10,'#76DCCD',True)
+        p(42,792,510,title,25,'#FFFFFF',True)
+        p(43,754,510,dt.date.fromisoformat(s['report_date']).strftime('%d %B %Y')+'  |  07:45 IST cutoff',8.5,'#BDD1D9')
+        c.setStrokeColor(HexColor('#D5E1E3')); c.line(28,29,567,29)
+        p(28,21,460,'Rules-based report  •  Missing data shown as N/A',6.5,MUTED)
+        p(525,21,42,f'{page:02d} / 02',6.5,MUTED,True)
+    def option_card(x,name,opt,spot):
+        rect(x,355,264,84,'#FFFFFF')
+        status='OK' if opt.get('status')=='PROVISIONAL' else 'N/A'
+        p(x+10,344,245,name+'  •  '+status,9,INK,True)
+        p(x+10,329,245,'Expiry '+val(opt.get('expiry'))+'  |  PCR '+num(opt.get('pcr_current'),3),7.5)
+        for i,(title,key) in enumerate((('Call wall','call_walls'),('Put wall','put_walls'),('Max pain','max_pain'))):
+            level=opt.get(key)
+            p(x+10,315-i*13,245,title+': '+level_text(level)+'  •  '+distance(level,spot),7.2,maxh=11)
+        if status!='OK': p(x+10,276,245,brief(opt.get('reason','Same-expiry option baseline unavailable'),55),6.5,MUTED,maxh=9)
+    def linked_headline(item,y):
+        outlet=item.get('source') or urlsplit(item.get('url') or '').hostname or 'Unknown outlet'
+        p(28,y,539,brief(outlet,36)+'  •  '+stamp(item.get('published_IST')),6.5,MUTED)
+        p(28,y-10,539,brief(item.get('title'),124),7.3,TEAL,maxh=18)
+        url=item.get('url') or ''; parsed=urlsplit(url)
+        if parsed.scheme=='https' and parsed.netloc: c.linkURL(url,(28,y-28,567,y),relative=0)
+    score=s['score']; rows={x.get('check'):x for x in s.get('flows',[]) if isinstance(x,dict)}
+    base(1,'The morning view')
+    rect(28,713,539,94,'#FFFFFF')
+    p(42,701,510,'OFFICIAL SIX-SIGNAL SCORE',7,TEAL,True)
+    bias=score['bias']
+    p(42,684,510,'Insufficient data for final bias' if bias=='INSUFFICIENT DATA TO ASSIGN FINAL BIAS' else bias.title(),18,INK,True,maxh=23)
+    p(42,655,510,'Score '+num(score['score'],0,True)+'  |  Coverage '+str(score['available'])+'/6  |  Possible range '+val(score['score_range']),9,TEAL,True)
+    missing=', '.join(k.replace('_',' ') for k in score['missing']) or 'none'
+    p(42,639,510,'Missing: '+brief(missing,113),7.4,MUTED,maxh=12)
+    vix=s.get('vix') or {}
+    p(42,627,510,'India VIX '+num(vix.get('level'))+'  |  1-day '+num(vix.get('change_pct'),2,True)+'%  |  Caution '+val(s.get('vix_flag')),7.4,AMBER,maxh=10)
+    section('01','Three factual alerts',606)
+    for i,a in enumerate((r.get('alerts') or [])[:3]):
+        x=28+i*183; rect(x,580,173,47,'#FFFFFF')
+        p(x+9,570,155,brief(a,100),7.2,maxh=32)
+    section('02','Index close and futures positioning',521)
+    for i,(name,key) in enumerate((('Nifty','NIFTY'),('Bank Nifty','BANKNIFTY'))):
+        x=28+i*275; rect(x,495,264,100,'#FFFFFF')
+        spot=(s.get('indices') or {}).get(name) or {}
+        f=rows.get(key+' futures') or {}; bars=f.get('daily_observations') or []
+        latest=bars[0] if bars else {}
+        context=(s.get('futures_context') or {}).get(key) or {}
+        p(x+10,483,245,name,11,INK,True)
+        p(x+10,466,245,'Spot '+num(spot.get('last_price'))+'  ('+num(spot.get('change_pct'),2,True)+'%)',8.4,TEAL,True)
+        if spot.get('last_price') is None:
+            p(x+10,453,245,brief(spot.get('reason','Completed-session quote unavailable'),58),6.5,MUTED)
+        p(x+10,440,245,'Future '+('OK ' if latest.get('close') is not None else 'N/A ')+num(latest.get('close'))+'  ('+num(f.get('delta_close'),2,True)+')',8)
+        p(x+10,425,245,'OI '+num(latest.get('oi_raw'),0)+' provider counts  ('+num(f.get('delta_oi_raw'),0,True)+')',7.2)
+        build_status='OK' if context.get('value') is not None else 'WITHHELD'
+        p(x+10,411,245,'Build-up '+build_status+': '+brief(context.get('reason','No qualified observation'),49),7,MUTED,maxh=18)
+    section('03','Option levels and distance from spot',381)
+    for i,(name,key) in enumerate((('Nifty','NIFTY'),('Bank Nifty','BANKNIFTY'))):
+        option_card(28+i*275,name,(s.get('options') or {}).get(key) or {},((s.get('indices') or {}).get(name) or {}).get('last_price'))
+    bank=(s.get('options') or {}).get('BANKNIFTY') or {}
+    if bank.get('first_failed_check'):
+        found=bank.get('expiries_found') or {}
+        foot='Bank Nifty withheld: '+bank['first_failed_check']+'; expiries D '+','.join(found.get('D',[]))+' / D-1 '+','.join(found.get('D-1',[]))
+        p(28,265,539,brief(foot,150),6,MUTED,maxh=8)
+    section('04','Shadow signals, not counted',257)
+    for i,(key,title) in enumerate((('futures_build_up','Futures'),('pcr_direction','PCR direction'),('strike_walls','Strike walls'))):
+        a=(s.get('shadow_signals') or {}).get(key) or {}; top=232-i*21
+        rect(28,top+1,539,20,'#FFFFFF')
+        p(36,top-4,100,title,7.4,INK,True)
+        p(138,top-4,160,'shadow, not counted: '+(num(a['value'],0,True) if a.get('value') is not None else 'N/A'),7,TEAL,True)
+        signal_status='OK' if a.get('value') is not None else 'WITHHELD'
+        p(302,top-4,255,signal_status+' — '+brief(a.get('reason','No qualified baseline'),54),6.9,MUTED,maxh=10)
+    section('05','Market headlines / last 12 hours',162)
+    headlines=s.get('news') or []
+    for i,item in enumerate(headlines[:3]): linked_headline(item,137-i*30)
+    if not headlines:
+        message=('News unavailable (quota) • '+stamp(s.get('news_quota_at_IST')) if s.get('news_status')=='QUOTA'
+                 else 'N/A — '+brief(s.get('news_reason','No eligible market headline returned for this window'),95))
+        p(28,137,539,message,8,MUTED)
+    c.showPage()
+
+    base(2,'The numbers and dates')
+    section('06','Markets and foreign exchange',712)
+    for title,x,w in (('MARKET',35,114),('VALUE',151,80),('PREV CLOSE',236,80),('CHANGE %',320,80),('AS OF / REASON',404,156)):
+        p(x,686,w,title,7,TEAL,True)
+    markets=s.get('global') or [{'name':'Market data','reason':'No provider observation'}]
+    for i,a in enumerate(markets[:9]):
+        top=669-i*18
+        if i%2==0: rect(28,top+2,539,17,'#FFFFFF')
+        p(35,top,114,brief(a.get('name'),22),7.3)
+        p(151,top,80,num(a.get('value')),7.3,INK,True)
+        p(236,top,80,num(a.get('previous_close')),7.3)
+        change=num(a.get('change_pct'),2,True)+'%' if a.get('change_pct') is not None else 'N/A'
+        p(320,top,80,change,7.3)
+        detail='OK • '+stamp(a.get('asof')) if a.get('value') is not None else 'N/A • '+brief(a.get('reason','No timely quote'),28)
+        p(404,top,156,detail,6.6,MUTED,maxh=16)
+    p(28,499,539,'N/A previous close or change: the provider did not supply a usable baseline.',6.4,MUTED)
+    section('07','Institutional positioning and cash flows',481)
+    fii=rows.get('FII index-futures positions') or {}; obs=fii.get('observations') or []
+    for i in range(2):
+        a=obs[i] if i<len(obs) else {}; top=456-i*17
+        p(36,top,165,'FII index futures '+val(a.get('date')),7.4,INK,True)
+        p(202,top,353,'Long '+num(a.get('long_contracts'),0)+'  Short '+num(a.get('short_contracts'),0)+'  Net '+num(a.get('net_contracts'),0)+'  L/S '+num(a.get('long_divided_by_short'),2),7.1,maxh=14)
+    if not obs: p(36,424,520,'N/A — '+brief(fii.get('reason','FII futures dates unavailable'),75),6.8,MUTED)
+    p(36,407,520,'CASH NET (₹ cr)  |  Last five completed sessions',7,TEAL,True)
+    fi=rows.get('FII cash') or {}; di=rows.get('DII cash') or {}
+    fo=fi.get('observations') or []; do=di.get('observations') or []
+    for i in range(5):
+        a=fo[i] if i<len(fo) else {}; b=do[i] if i<len(do) else {}; top=391-i*16
+        p(36,top,130,val(a.get('date') or b.get('date')),7.3)
+        p(175,top,170,'FII '+num(a.get('net_raw'),2,True),7.3)
+        p(360,top,190,'DII '+num(b.get('net_raw'),2,True),7.3)
+    if not fo or not do:
+        p(36,306,520,'N/A: '+brief(fi.get('reason') or di.get('reason') or 'Five-session cash series incomplete',100),6.5,MUTED)
+    section('08','More market headlines',288)
+    for i,item in enumerate(headlines[3:6]): linked_headline(item,261-i*28)
+    if len(headlines)<=3:
+        message=('News unavailable (quota) • '+stamp(s.get('news_quota_at_IST')) if s.get('news_status')=='QUOTA'
+                 else 'N/A — No additional eligible headline returned.')
+        p(28,261,539,message,7.3,MUTED)
+    if s.get('news_status')=='QUOTA':
+        coverage='News coverage unavailable (quota)'
+    else:
+        shown=s.get('news_shown_count',len(headlines))
+        matched=s.get('news_matched_count')
+        coverage=f'{shown} shown of {matched if matched is not None else "N/A"} matched in the window'
+    p(28,171,539,coverage+'  •  '+brief(s.get('news_note','Selected queries; coverage may be partial'),61),6.2,MUTED)
+    section('09','Calendar / dates in IST',154)
+    options=s.get('options') or {}; expiries=sorted({a.get('expiry') for a in options.values() if isinstance(a,dict) and a.get('expiry')})
+    events=s.get('calendar') or []
+    def event_date(term,agency):
+        match=next((a for a in events if a.get('agency')==agency and term in (a.get('title') or '').casefold()),None)
+        if not match:return 'N/A — no dated '+term.upper()+' item supplied'
+        return stamp(match.get('scheduled_IST')) if match.get('scheduled_IST') else val(match.get('date_IST'))+' (time N/A)'
+    cal=[('Nifty / Bank Nifty expiry',', '.join(expiries) if expiries else 'N/A — expiry unavailable'),
+         ('RBI',event_date('monetary policy','RBI')),('India CPI',event_date('consumer price','MoSPI'))]
+    high_impact=('employment situation','consumer price','gross domestic product','personal income','fomc')
+    us=[a for a in events if a.get('agency') in ('BLS','BEA','Federal Reserve') and
+        any(term in (a.get('title') or '').casefold() for term in high_impact)]
+    for a in us[:2]:
+        cal.append((brief(a.get('title'),34),stamp(a.get('scheduled_IST')) if a.get('scheduled_IST') else val(a.get('date_IST'))+' (time N/A)'))
+    if not us:cal.append(('US high-impact releases','N/A — no dated item supplied'))
+    for i,(title,when) in enumerate(cal[:5]):
+        top=129-i*17
+        p(35,top,260,title,7.1,INK,True)
+        p(300,top,260,brief(when,52),7.1,MUTED)
     c.save()

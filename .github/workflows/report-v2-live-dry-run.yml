@@ -1,0 +1,41 @@
+name: Report v2 live-data dry run
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: report-v2-live-dry-run
+  cancel-in-progress: false
+jobs:
+  collect-and-render:
+    if: github.ref == 'refs/heads/improve/report-v2-deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.ref }}
+      - run: python3 -m pip install -r requirements-report.txt
+      - name: Collect live provider data
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+          FORCE_DRY_RUN_COLLECTION: 'true'
+        run: python3 -m integrated.collect
+      - name: Append shadow CSV and render dry-run PDF
+        env:
+          DRY_RUN: 'true'
+        run: |
+          python3 -m integrated.shadow_history
+          python3 -m integrated.dry_run
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: report-v2-live-dry-run
+          path: |
+            handoff/*.json
+            history/shadow-signals.csv
+            out/report-v2-live-dry-run-*.pdf
+            out/live-dry-run-summary.md
+          retention-days: 7
+          if-no-files-found: warn
