@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-10-31",
+  "cutoff_IST": "2026-10-31T07:45:00+05:30",
+  "collected_at_IST": "2026-10-31T13:53:39.022903+05:30",
+  "mode": "PARTIAL_TRIAL",
+  "source_run": "41184419352",
+  "options": {},
+  "global": [],
+  "calendar": [],
+  "news": [],
+  "vix_flag": "UNKNOWN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": null,
+      "fii_cash": null,
+      "dii_cash": null
+    },
+    "score": 0,
+    "available": 0,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls",
+      "fii_futures",
+      "fii_cash",
+      "dii_cash"
+    ],
+    "missing_count": 6,
+    "score_range": [
+      -6,
+      6
+    ],
+    "possible_categories": [
+      "BEARISH",
+      "NEUTRAL",
+      "BULLISH"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "limitations": [
+    "OI units/calendar pending. Cash: \u20b9 cr per user assumption; no rescaling; unit reconciliation pending.",
+    "Draft trial mapping retained; no added MCP/VIX points.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "CLOSED",
+  "collection_status": "CLOSED",
+  "timing": "LATE_COLLECTION"
+}
