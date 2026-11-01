@@ -1,7 +1,7 @@
 {
-  "report_date": "2026-10-31",
-  "path": "handoff/2026-10-31.json",
-  "snapshot_sha256": "de9a2bbdd0b8fd8dba243433e778d88d717620b0f54d9f59bf6e6712655e87e1",
+  "report_date": "2026-11-01",
+  "path": "handoff/2026-11-01.json",
+  "snapshot_sha256": "7c1b255139dfd2bb07594834d15af0c8bf4c3a5ea8d7c64cb39524fe26d0ddd6",
   "status": "CLOSED",
   "trading_day": "CLOSED"
 }
