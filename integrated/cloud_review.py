@@ -12,29 +12,36 @@ def make_review(snapshot):
     n=score['available']
     missing=score['missing']
     bias=score['bias']
+    shadows=snapshot.get('shadow_signals',{})
+    shadow_note=' Shadow signals are displayed separately and are not counted.' if shadows else ''
     summary=(
         f"At the 07:45 IST report cutoff, the deterministic score is {score['score']:+d} "
         f"from {n}/6 available signals. The theoretical range is "
         f"[{score['score_range'][0]:+d}, {score['score_range'][1]:+d}]. "
         f"The computed bias is {bias}. "
         f"Missing signals: {', '.join(missing) if missing else 'none'}. "
-        "Option levels and global data retain their source status and timestamps. "
-        "Cash figures are shown in ₹ cr under the user-specified unit assumption; "
-        "independent unit reconciliation remains pending. No DII-offset bonus is applied. "
-        "This is a rules-based cloud summary; dated NSE MCP context was not available in GitHub Actions."
+        "Missing values remain N/A. Cash figures are labelled ₹ cr. "
+        "The volatility caution is separate from the score. "
+        "No DII-offset bonus is applied."+shadow_note
     )
-    alerts=[
-        (f"Only {n}/6 scoring signals available; {bias}." if missing else f"All six signals available; computed bias: {bias}."),
-        ("Missing signals: "+', '.join(missing)+"." if missing else "No scoring signals missing; check source timestamps."),
-        f"India VIX caution: {snapshot.get('vix_flag','UNKNOWN')}. Cash unit assumption: ₹ cr; verify before use."
-    ]
+    vix=snapshot.get('vix') or {}
+    future=shadows.get('futures_build_up',{})
+    readable_bias='final bias unavailable' if bias=='INSUFFICIENT DATA TO ASSIGN FINAL BIAS' else bias.lower()
+    alerts=[f"Score {score['score']:+d} from {n}/6 signals; {readable_bias}.",
+            (f"Futures build-up withheld: {future.get('reason','data unavailable')}." if future.get('value') is None
+             else f"Futures build-up is {future.get('reason','classified')}; shadow, not counted."),
+            (f"India VIX {vix.get('level')}; caution {snapshot.get('vix_flag','UNKNOWN')}." if vix.get('level') is not None
+             else f"India VIX N/A: {vix.get('reason','previous-session quote unavailable')}.")]
+    alerts=[a[:179] for a in alerts]
     return {'schema_version':1,'report_date':snapshot['report_date'],
             'snapshot_sha256':digest(snapshot),'summary':summary,
             'alerts':alerts,'mcp_context':[]}
 
 
 def run(root,now):
-    day=now.astimezone(IST).date().isoformat()
+    local=now.astimezone(IST)
+    day=local.date().isoformat()
+    if local.time()<dt.time(7,55) or local.time()>dt.time(8,10):return False
     pointer=json.loads((root/'handoff/latest.json').read_text())
     if pointer.get('report_date')!=day or pointer.get('path')!=f'handoff/{day}.json':
         raise ValueError('No current dated handoff; collection may be late')
