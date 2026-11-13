@@ -7,6 +7,11 @@ on:
     workflows: ["Collect compact morning handoff"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate only; never send to Telegram'
+        type: boolean
+        default: true
 permissions:
   contents: write
 concurrency:
@@ -14,18 +19,19 @@ concurrency:
   cancel-in-progress: false
 jobs:
   review-and-deliver:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && (github.event_name != 'workflow_dispatch' || inputs.dry_run || github.ref_name == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && github.ref_name || 'main' }}
       - name: Generate bounded rules-based review
         id: review
+        continue-on-error: true
         run: python3 -m integrated.cloud_review
       - name: Publish review and deliver text briefing
-        if: steps.review.outputs.ready == 'true'
+        if: steps.review.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
         env:
           DRY_RUN: 'false'
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -39,3 +45,14 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
           python3 -m integrated.deliver
+      - name: Send unavailable-data status if briefing was not delivered
+        if: always()
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 -m integrated.morning_fallback
