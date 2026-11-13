@@ -3,9 +3,6 @@ on:
   schedule:
     - cron: '15,25 2 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['integrated/**', '.github/workflows/integrated-collect.yml']
 permissions:
   contents: write
 concurrency:
