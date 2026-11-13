@@ -253,10 +253,10 @@ def choose_future(rows, underlying, today):
         lot = require_count(row.get("lot_size"))
         if lot <= 0:
             raise CheckFailure("Futures lot size is not positive.")
-        if expiry > today:
+        if expiry >= today:
             eligible.append((expiry, key, lot))
     if not eligible:
-        raise CheckFailure("No exact-index futures contract with an expiry after today was returned.")
+        raise CheckFailure("No exact-index futures contract with an expiry on or after today was returned.")
     first = min(item[0] for item in eligible)
     matches = [item for item in eligible if item[0] == first]
     if len(matches) != 1:

@@ -1,0 +1,6 @@
+{
+  "bullish_threshold": 3,
+  "bearish_threshold": -3,
+  "vix_caution_threshold": 20,
+  "shadow_signals_enabled": true
+}

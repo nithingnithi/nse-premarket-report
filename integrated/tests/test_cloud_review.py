@@ -34,16 +34,24 @@ class CloudReviewTests(unittest.TestCase):
             root=Path(d);self.setup_root(root)
             self.assertTrue(run(root,self.now))
             self.assertFalse(run(root,self.now))
-    def test_late_and_stale_fail(self):
+    def test_late_workflow_trigger_skips_without_review(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
-            for time in (self.now+dt.timedelta(minutes=16),self.now+dt.timedelta(days=1)):
-                with self.subTest(time=time),self.assertRaises(ValueError):run(root,time)
+            late=dt.datetime(2026,10,28,14,7,tzinfo=IST)
+            self.assertFalse(run(root,late))
+            self.assertFalse((root/'review_requests').exists())
+    def test_stale_handoff_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            with self.assertRaises(ValueError):run(root,self.now+dt.timedelta(days=1))
     def test_early_collector_completion_waits_for_cloud_cron(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
             self.assertFalse(run(root,self.now-dt.timedelta(minutes=6)))
             self.assertFalse((root/'review_requests').exists())
+    def test_preflight_completion_without_snapshot_is_quiet(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(run(Path(d),dt.datetime(2026,10,28,7,35,tzinfo=IST)))
     def test_closed_session_skips(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.snapshot['trading_day']='CLOSED';self.setup_root(root)
