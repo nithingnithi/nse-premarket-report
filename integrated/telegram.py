@@ -123,3 +123,46 @@ def send(pdf, filename):
     print("CHANNEL_DELIVERY_RESULT: PDF accepted in verified channel; downloaded SHA-256 matches original.")
 
     return {"status": "SENT", "pdf_sha256": pdf_sha256}
+
+
+def send_text(message, opener=None):
+    """Send one plain-text message; an uncertain response is never retried."""
+    if os.environ.get('GITHUB_RUN_ATTEMPT') != '1':
+        stop('Repeated delivery attempts are blocked.')
+    token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+    channel = os.environ.get('TELEGRAM_CHANNEL_ID', '').strip()
+    owner = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
+    if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token) or not re.fullmatch(r'-[1-9][0-9]*', channel) or not re.fullmatch(r'[1-9][0-9]*', owner):
+        stop('Telegram destination configuration is missing or malformed.')
+    if not isinstance(message, str) or not 1 <= len(message) <= 4096:
+        stop('Telegram text length is invalid.')
+    opener = opener or urllib.request.build_opener(NoRedirect())
+
+    def call(method, data):
+        req = urllib.request.Request('https://api.telegram.org/bot' + token + '/' + method,
+            data=json.dumps(data).encode('utf-8'), headers={'Content-Type':'application/json'}, method='POST')
+        try:
+            with opener.open(req, timeout=30) as response:
+                payload = json.load(response)
+        except Exception:
+            stop('Telegram result uncertain. Check the channel before any manual retry.' if method == 'sendMessage' else 'Telegram destination check failed.')
+        if not isinstance(payload, dict) or payload.get('ok') is not True:
+            stop('Telegram rejected a request; no automatic retry.')
+        return payload.get('result')
+
+    bot = call('getMe', {})
+    if not isinstance(bot, dict) or bot.get('username','').lower() != 'nsemorningreportbot' or type(bot.get('id')) is not int:
+        stop('Unexpected bot identity.')
+    chat = call('getChat', {'chat_id': channel})
+    if not isinstance(chat, dict) or chat.get('id') != int(channel) or chat.get('type') != 'channel' or chat.get('title') != 'NSE Morning Report':
+        stop('Unexpected Telegram channel.')
+    member = call('getChatMember', {'chat_id': channel, 'user_id': bot['id']})
+    owner_row = call('getChatMember', {'chat_id': channel, 'user_id': int(owner)})
+    if (not isinstance(member, dict) or member.get('status') != 'administrator' or member.get('can_post_messages') is not True
+            or not isinstance(owner_row, dict) or owner_row.get('status') != 'creator' or owner_row.get('user',{}).get('id') != int(owner)):
+        stop('Telegram posting permissions or owner not confirmed.')
+    sent = call('sendMessage', {'chat_id': channel, 'text': message, 'link_preview_options': {'is_disabled': True}})
+    if (not isinstance(sent, dict) or type(sent.get('message_id')) is not int or sent['message_id'] <= 0
+            or sent.get('chat',{}).get('id') != int(channel) or sent.get('text') != message):
+        stop('Telegram message result is uncertain. Check the channel before any manual retry.')
+    return {'status':'SENT', 'text_sha256':hashlib.sha256(message.encode('utf-8')).hexdigest(), 'message_id':sent['message_id']}

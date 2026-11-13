@@ -24,7 +24,7 @@ jobs:
       - name: Generate bounded rules-based review
         id: review
         run: python3 -m integrated.cloud_review
-      - name: Publish review and deliver PDF
+      - name: Publish review and deliver text briefing
         if: steps.review.outputs.ready == 'true'
         env:
           DRY_RUN: 'false'
@@ -32,7 +32,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: |
-          python3 -m pip install -r requirements-report.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- review_requests/
@@ -40,10 +39,3 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
           python3 -m integrated.deliver
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
-        with:
-          name: cloud-morning-report
-          path: out/*.pdf
-          retention-days: 7
-          if-no-files-found: ignore

@@ -5,8 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 from integrated.review import IST,load,validate
-from integrated.render import render
-from integrated.telegram import send
+from integrated.telegram import send_text
+from integrated.text_report import format_report
 
 def persist(path):
     for args in (['git','add','--',str(path)],['git','commit','-m','Record report delivery state'],['git','push','origin','HEAD:main']):
@@ -22,12 +22,14 @@ def main():
     now=dt.datetime.now(IST);dry=os.environ.get('DRY_RUN','true')=='true'
     day=os.environ.get('REPORT_DATE') or now.date().isoformat()
     s,r=load(day);validate(s,r,now,live=not dry)
-    path=Path('out')/f'nse-report-{day}.pdf';render(s,r,path)
+    message=format_report(s,r)
     if dry:
-        print('INTEGRATION_DRY_RUN_PASS: validated review and rendered PDF; no Telegram request');return
+        print('INTEGRATION_DRY_RUN_PASS: validated text briefing; no Telegram request');return
     ledger=Path('delivery_ledger')/(day+'.json')
     reserve(ledger,{'report_date':day,'status':'RESERVED_UNCERTAIN_UNTIL_VERIFIED','run_id':os.environ.get('GITHUB_RUN_ID')})
-    result=send(path.read_bytes(),path.name)
+    # Recheck the live window after the remote reservation, immediately before sendMessage.
+    validate(s,r,dt.datetime.now(IST),live=True)
+    result=send_text(message)
     ledger.write_text(json.dumps({'report_date':day,**result},indent=2));persist(ledger)
 if __name__=='__main__':
     try:main()
