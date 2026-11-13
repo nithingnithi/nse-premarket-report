@@ -34,7 +34,10 @@ def make_review(snapshot):
 
 
 def run(root,now):
-    day=now.astimezone(IST).date().isoformat()
+    local=now.astimezone(IST)
+    day=local.date().isoformat()
+    # A delayed GitHub cron must not turn yesterday's handoff into a failed job.
+    if not dt.time(7,55)<=local.time()<=dt.time(8,10):return False
     pointer=json.loads((root/'handoff/latest.json').read_text())
     if pointer.get('report_date')!=day or pointer.get('path')!=f'handoff/{day}.json':
         raise ValueError('No current dated handoff; collection may be late')
