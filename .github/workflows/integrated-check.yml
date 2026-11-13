@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, fix/plain-text-morning-delivery]
     paths: ['integrated/**', 'nse_report/**', 'infra/worker/**', '.github/workflows/integrated-*.yml']
+  pull_request:
+    branches: [main]
+    paths: ['integrated/**', 'nse_report/**', 'infra/worker/**', '.github/workflows/integrated-*.yml']
 permissions:
   contents: read
 jobs:
