@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import os
+import re
 from pathlib import Path
 from integrated.collect import digest
 from integrated.review import IST,validate
@@ -37,7 +38,7 @@ def run(root,now):
     local=now.astimezone(IST)
     day=local.date().isoformat()
     # A delayed GitHub cron must not turn yesterday's handoff into a failed job.
-    if not dt.time(7,55)<=local.time()<=dt.time(8,10):return False
+    if not dt.time(7,45)<=local.time()<=dt.time(8,10):return False
     pointer=json.loads((root/'handoff/latest.json').read_text())
     if pointer.get('report_date')!=day or pointer.get('path')!=f'handoff/{day}.json':
         raise ValueError('No current dated handoff; collection may be late')
@@ -47,12 +48,23 @@ def run(root,now):
     if snapshot.get('trading_day')=='CLOSED':return False
     if snapshot.get('trading_day')!='OPEN':raise ValueError('Trading calendar is unverified')
     cutoff=dt.datetime.fromisoformat(snapshot['cutoff_IST'])
-    if now<cutoff+dt.timedelta(minutes=10):return False
+    if now<cutoff:return False
     if now>cutoff+dt.timedelta(minutes=25):
         raise ValueError('Cloud review started after 08:10 IST')
-    if (root/f'delivery_ledger/{day}.json').exists():return False
+    ledger=root/f'delivery_ledger/{day}.json'
+    if ledger.exists():
+        try:
+            delivery=json.loads(ledger.read_text())
+        except (OSError,ValueError):
+            raise ValueError('Delivery ledger is malformed or uncertain')
+        if (delivery.get('report_date')==day and delivery.get('status')=='SENT'
+                and isinstance(delivery.get('text_sha256'),str)
+                and re.fullmatch(r'[a-f0-9]{64}',delivery['text_sha256'])
+                and type(delivery.get('message_id')) is int and delivery['message_id']>0):
+            return False
+        raise ValueError('Delivery is reserved or unconfirmed; no automatic retry')
     target=root/f'review_requests/{day}.json'
-    if target.exists():return False
+    if target.exists():raise ValueError('Review already exists without confirmed delivery')
     review=make_review(snapshot)
     validate(snapshot,review,now,live=True)
     target.parent.mkdir(exist_ok=True)
