@@ -20,6 +20,17 @@ async function github(url, token, fetcher) {
   return response;
 }
 
+async function currentHandoffReady(repo, date, token, fetcher) {
+  try {
+    const response = await github(api(repo, 'contents/handoff/latest.json?ref=main'), token, fetcher);
+    if (response.status !== 200) return false;
+    const payload = await response.json();
+    const pointer = JSON.parse(atob(payload.content.replace(/\s/g, '')));
+    return pointer.report_date === date && pointer.path === `handoff/${date}.json`
+      && pointer.trading_day === 'OPEN' && /^[a-f0-9]{64}$/.test(pointer.snapshot_sha256);
+  } catch { return false; }
+}
+
 export async function run(cron, scheduledTime, env, fetcher = fetch, log = console) {
   const mode = CRONS[cron];
   if (!mode) throw new Error('Unknown cron');
@@ -40,6 +51,13 @@ export async function run(cron, scheduledTime, env, fetcher = fetch, log = conso
   if (HOLIDAYS_2026.has(date)) return 'HOLIDAY';
   if (mode !== 'watchdog') {
     if (ref !== 'main') throw new Error('Live dispatch requires main');
+    // The collection-completed workflow is the primary sequential path. At 07:55,
+    // dispatch a backup review only after today's compact handoff exists.
+    if (mode === 'briefing' && cron === '25 2 * * 2-6'
+        && !(await currentHandoffReady(repo, date, env.GITHUB_TOKEN, fetcher))) {
+      log.log(`handoff not ready ${date}`);
+      return 'WAITING_FOR_HANDOFF';
+    }
     const workflow = mode === 'collect' ? 'integrated-collect.yml' : 'integrated-cloud.yml';
     const body = mode === 'collect' ? { ref } : { ref, inputs: { dry_run: false } };
     let status;

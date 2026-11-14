@@ -7,13 +7,18 @@ const env = { REPO:'nithingnithi/nse-premarket-report',
 const date = Date.parse('2026-10-30T02:15:00Z'); // Friday
 const watchdogTime = Date.parse('2026-10-30T02:50:00Z');
 const silent = { log() {} };
-function fixture(dispatch=204, ledger=404, record=null) {
+function fixture(dispatch=204, ledger=404, record=null,
+  handoff={report_date:'2026-10-30',path:'handoff/2026-10-30.json',trading_day:'OPEN',snapshot_sha256:'a'.repeat(64)}) {
   const calls=[];
   const fetcher=async (url,options) => {
     calls.push({url,options});
     if (url.endsWith('/dispatches')) {
       if (dispatch === 'throw') throw new Error('synthetic network failure');
       return {status:dispatch};
+    }
+    if (url.includes('/handoff/latest.json')) {
+      if (handoff === null) return {status:404};
+      return {status:200,json:async()=>({content:Buffer.from(JSON.stringify(handoff)).toString('base64')})};
     }
     if (url.includes('/delivery_ledger/')) {
       if (ledger === 'throw') throw new Error('synthetic network failure');
@@ -32,8 +37,14 @@ assert.match(f.calls[0].url,/integrated-collect\.yml\/dispatches$/);
 assert.deepEqual(JSON.parse(f.calls[0].options.body),{ref:'main'});
 f=fixture();
 assert.equal(await run('25 2 * * 2-6',date,env,f.fetcher,silent),'DISPATCHED');
-assert.match(f.calls[0].url,/integrated-cloud\.yml\/dispatches$/);
-assert.deepEqual(JSON.parse(f.calls[0].options.body),{ref:'main',inputs:{dry_run:false}});
+assert.match(f.calls[1].url,/integrated-cloud\.yml\/dispatches$/);
+assert.deepEqual(JSON.parse(f.calls[1].options.body),{ref:'main',inputs:{dry_run:false}});
+f=fixture(204,404,null,null);
+assert.equal(await run('25 2 * * 2-6',date,env,f.fetcher,silent),'WAITING_FOR_HANDOFF');
+assert.equal(f.calls.filter(x=>x.url.endsWith('/dispatches')).length,0);
+f=fixture(204,404,null,{report_date:'2026-10-29',path:'handoff/2026-10-29.json',trading_day:'OPEN',snapshot_sha256:'a'.repeat(64)});
+assert.equal(await run('25 2 * * 2-6',date,env,f.fetcher,silent),'WAITING_FOR_HANDOFF');
+assert.equal(f.calls.filter(x=>x.url.endsWith('/dispatches')).length,0);
 f=fixture();
 assert.equal(await run('35 2 * * 2-6',date,env,f.fetcher,silent),'DISPATCHED');
 f=fixture(500);

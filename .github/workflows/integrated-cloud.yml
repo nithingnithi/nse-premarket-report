@@ -2,7 +2,7 @@ name: Cloud morning review and channel delivery
 on:
   schedule:
     # UTC; 07:55 and 08:05 IST. The second attempt covers a delayed collection.
-    - cron: '25,35 2 * * *'
+    - cron: '25,35 2 * * 1-5'
   workflow_run:
     workflows: ["Collect compact morning handoff"]
     types: [completed]
@@ -28,7 +28,6 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && github.ref_name || 'main' }}
       - name: Generate bounded rules-based review
         id: review
-        continue-on-error: true
         run: python3 -m integrated.cloud_review
       - name: Publish review and deliver text briefing
         if: steps.review.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)

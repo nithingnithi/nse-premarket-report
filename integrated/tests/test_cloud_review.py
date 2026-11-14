@@ -33,7 +33,7 @@ class CloudReviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
             self.assertTrue(run(root,self.now))
-            self.assertFalse(run(root,self.now))
+            with self.assertRaises(ValueError):run(root,self.now)
     def test_late_workflow_skips_without_review(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
@@ -44,10 +44,15 @@ class CloudReviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
             with self.assertRaises(ValueError):run(root,self.now+dt.timedelta(days=1))
-    def test_early_collector_completion_waits_for_cloud_cron(self):
+    def test_early_collector_completion_creates_review_immediately(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
-            self.assertFalse(run(root,self.now-dt.timedelta(minutes=6)))
+            self.assertTrue(run(root,self.now-dt.timedelta(minutes=6)))
+            self.assertTrue((root/'review_requests/2026-10-28.json').exists())
+    def test_before_cutoff_does_not_create_review(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            self.assertFalse(run(root,self.now-dt.timedelta(minutes=11)))
             self.assertFalse((root/'review_requests').exists())
     def test_closed_session_skips(self):
         with tempfile.TemporaryDirectory() as d:
@@ -60,9 +65,21 @@ class CloudReviewTests(unittest.TestCase):
             self.snapshot['score']['score']=6
             (root/'handoff/2026-10-28.json').write_text(json.dumps(self.snapshot))
             with self.assertRaises(ValueError):run(root,self.now)
-    def test_existing_ledger_blocks(self):
+    def test_uncertain_ledger_fails_visibly(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
             (root/'delivery_ledger').mkdir()
-            (root/'delivery_ledger/2026-10-28.json').write_text('{}')
+            (root/'delivery_ledger/2026-10-28.json').write_text(json.dumps({'report_date':'2026-10-28','status':'RESERVED_UNCERTAIN_UNTIL_VERIFIED'}))
+            with self.assertRaises(ValueError):run(root,self.now)
+    def test_confirmed_ledger_skips_duplicate(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            (root/'delivery_ledger').mkdir()
+            (root/'delivery_ledger/2026-10-28.json').write_text(json.dumps({'report_date':'2026-10-28','status':'SENT','text_sha256':'a'*64,'message_id':1}))
             self.assertFalse(run(root,self.now))
+    def test_existing_review_without_delivery_fails_visibly(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            (root/'review_requests').mkdir()
+            (root/'review_requests/2026-10-28.json').write_text('{}')
+            with self.assertRaises(ValueError):run(root,self.now)

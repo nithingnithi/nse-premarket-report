@@ -1,7 +1,7 @@
 name: Collect compact morning handoff
 on:
   schedule:
-    - cron: '15,25 2 * * *'
+    - cron: '15,25 2 * * 1-5'
   workflow_dispatch:
 permissions:
   contents: write
