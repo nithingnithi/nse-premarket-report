@@ -2,7 +2,7 @@ name: Integration offline checks
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/plain-text-morning-delivery]
+    branches: [main, fix/pdf-morning-delivery]
     paths: ['integrated/**', 'nse_report/**', 'infra/worker/**', '.github/workflows/integrated-*.yml']
   pull_request:
     branches: [main]
@@ -19,7 +19,7 @@ jobs:
       - run: python3 -m unittest discover -s integrated/tests -v
       - run: python3 -m unittest discover -s tests -p test_calculations.py -v
       - run: node infra/worker/worker.test.mjs
-      - name: Synthetic review-to-text dry run
+      - name: Synthetic review-to-PDF dry run
         run: |
           mkdir -p handoff review_requests
           cp integrated/tests/fixtures/snapshot.json handoff/2026-10-28.json

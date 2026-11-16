@@ -6,7 +6,8 @@ from pathlib import Path
 
 from integrated.deliver import persist, reserve
 from integrated.review import IST
-from integrated.telegram import send_text
+from integrated.telegram import send
+from integrated.render import render_status
 
 
 def status_message(day, reason):
@@ -44,7 +45,7 @@ def decision(root, now):
     return status_message(day, 'Today’s market handoff was not available by 08:05 IST; trading session unverified.')
 
 
-def run(root, now, dry_run=True, commit=persist, sender=send_text, clock=None):
+def run(root, now, dry_run=True, commit=persist, sender=send, clock=None):
     message = decision(root, now)
     if message is None:
         local = now.astimezone(IST)
@@ -60,16 +61,19 @@ def run(root, now, dry_run=True, commit=persist, sender=send_text, clock=None):
                     and snapshot.get('trading_day') == 'CLOSED'):
                 raise ValueError('No confirmed delivery by fallback cutoff')
         return 'SKIPPED'
-    if dry_run:
-        return message
     day = now.astimezone(IST).date().isoformat()
+    output = root / 'out' / f'NSE-Morning-Status-{day}.pdf'
+    render_status(day, message, output)
+    pdf = output.read_bytes()
+    if dry_run:
+        return 'DRY_RUN_PDF'
     ledger = root / f'delivery_ledger/{day}.json'
     reserve(ledger, {'report_date': day, 'status': 'RESERVED_UNCERTAIN_UNTIL_VERIFIED',
                      'run_id': os.environ.get('GITHUB_RUN_ID')}, commit)
     current = clock() if clock is not None else dt.datetime.now(IST)
     if current.astimezone(IST).date() != now.astimezone(IST).date() or not dt.time(8, 5) <= current.astimezone(IST).time() <= dt.time(8, 10):
         raise ValueError('Fallback delivery window closed after reservation')
-    result = sender(message)
+    result = sender(pdf, output.name)
     ledger.write_text(json.dumps({'report_date': day, **result}, indent=2))
     commit(ledger)
     return result['status']
@@ -81,7 +85,7 @@ def main():
         result = run(Path('.'), dt.datetime.now(IST), dry_run=dry)
     except Exception:
         raise SystemExit('Morning fallback failed safely; inspect the delivery ledger and channel before any retry.')
-    print('MORNING_FALLBACK_' + ('DRY_RUN' if isinstance(result, str) and result.startswith('NSE morning') else str(result)))
+    print('MORNING_FALLBACK_' + str(result))
 
 
 if __name__ == '__main__':
