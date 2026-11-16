@@ -45,6 +45,30 @@ class TextDeliveryTests(unittest.TestCase):
         self.assertIn('N/A',message)
         self.assertLessEqual(len(message),4096)
 
+    def test_long_news_and_calendar_fit_one_message_with_honest_counts(self):
+        snapshot=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        snapshot['news']=[{'title':f'Synthetic story {i}',
+            'url':f'https://example.com/story/{i}/'+'x'*350,
+            'published_IST':'2026-10-28T06:00:00+05:30'} for i in range(6)]
+        snapshot['news_matched_count']=6
+        snapshot['calendar']=[{'title':f'Synthetic event {i}',
+            'scheduled_IST':'2026-10-28T10:00:00+05:30',
+            'source':f'https://example.com/calendar/{i}/'+'y'*250} for i in range(4)]
+        message=format_report(snapshot,make_review(snapshot))
+        shown=message.count('• Synthetic story')
+        self.assertLessEqual(len(message),4096)
+        self.assertIn(f'News: {shown} shown of 6 matched in the window',message)
+        self.assertIn('Bias:',message)
+        self.assertIn('Telegram limit',message)
+        snapshot['calendar']=[]
+        for row in snapshot['news']:
+            row['url'] += 'z'*500
+        message=format_report(snapshot,make_review(snapshot))
+        shown=message.count('• Synthetic story')
+        self.assertLessEqual(len(message),4096)
+        self.assertLess(shown,6)
+        self.assertIn(f'News: {shown} shown of 6 matched in the window',message)
+
     def test_verified_text_send_once(self):
         opener=FakeOpener('Morning update')
         with patch.dict(os.environ,{'GITHUB_RUN_ATTEMPT':'1','TELEGRAM_BOT_TOKEN':'123:synthetic_token','TELEGRAM_CHANNEL_ID':'-123','TELEGRAM_CHAT_ID':'456'}):
