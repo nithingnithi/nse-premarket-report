@@ -66,6 +66,10 @@ assert.match(JSON.parse(f.calls.find(x=>x.url.endsWith('/sendMessage')).options.
 f=fixture(204,200,{report_date:'2026-10-30',status:'SENT',text_sha256:'a'.repeat(64),message_id:11});
 assert.equal(await run('50 2 * * 2-6',watchdogTime,env,f.fetcher,silent),'CONFIRMED_SENT');
 assert.equal(f.calls.filter(x=>x.url.endsWith('/sendMessage')).length,0);
+f=fixture(204,200,{report_date:'2026-10-30',status:'SENT',pdf_sha256:'b'.repeat(64),message_id:12});
+assert.equal(await run('50 2 * * 2-6',watchdogTime,env,f.fetcher,silent),'CONFIRMED_SENT');
+f=fixture(204,200,{report_date:'2026-10-30',status:'SENT',pdf_sha256:'b'.repeat(64)});
+assert.equal(await run('50 2 * * 2-6',watchdogTime,env,f.fetcher,silent),'ALERT_SENT');
 f=fixture(204,200,{report_date:'2026-10-29',status:'SENT',text_sha256:'a'.repeat(64),message_id:11});
 assert.equal(await run('50 2 * * 2-6',watchdogTime,env,f.fetcher,silent),'ALERT_SENT');
 f=fixture(204,200,{report_date:'2026-10-30',status:'SENT'});

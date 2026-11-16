@@ -140,3 +140,27 @@ def render(s,r,path):
     sessions=s.get('completed_sessions',{}).get('NFO')
     p('Sessions: '+text(sessions)+' | Collected '+stamp(s.get('collected_at_IST')),28,41,539,6.5,MUTED)
     c.save()
+
+
+def render_status(day, message, path):
+    """A clearly labelled PDF when a validated market report is unavailable."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    c = canvas.Canvas(str(path), pagesize=(595, 842))
+    c.setTitle('NSE Morning Report | ' + day + ' | Data unavailable')
+    c.setFillColor(HexColor(PAPER)); c.rect(0, 0, 595, 842, fill=1, stroke=0)
+    c.setFillColor(HexColor(NAVY)); c.rect(0, 700, 595, 142, fill=1, stroke=0)
+    c.setFillColor(HexColor('#FFFFFF')); c.setFont('Helvetica-Bold', 21)
+    c.drawString(35, 770, 'NSE Morning Report')
+    c.setFont('Helvetica', 11); c.drawString(35, 739, day + ' | 07:45 IST cutoff')
+    style = ParagraphStyle('status', fontName='Helvetica', fontSize=12, leading=20, textColor=HexColor(INK))
+    top = 660
+    for line in message.splitlines():
+        paragraph = Paragraph(escape(line), style)
+        _, height = paragraph.wrap(525, 500)
+        if top - height < 80:
+            raise ValueError('Status report exceeds one page')
+        paragraph.drawOn(c, 35, top - height)
+        top -= height + 14
+    c.setFont('Helvetica', 9); c.setFillColor(HexColor(MUTED))
+    c.drawString(35, 35, 'Data unavailable; no market direction is assigned.')
+    c.save()

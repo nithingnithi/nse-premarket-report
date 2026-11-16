@@ -80,7 +80,8 @@ export async function run(cron, scheduledTime, env, fetcher = fetch, log = conso
     try {
       const payload = await ledger.json();
       const data = JSON.parse(atob(payload.content.replace(/\s/g,'')));
-      if (data.report_date === date && data.status === 'SENT' && /^[a-f0-9]{64}$/.test(data.text_sha256)
+      if (data.report_date === date && data.status === 'SENT' &&
+          (/^[a-f0-9]{64}$/.test(data.pdf_sha256) || /^[a-f0-9]{64}$/.test(data.text_sha256))
           && Number.isInteger(data.message_id) && data.message_id > 0)
         return 'CONFIRMED_SENT';
     } catch { /* A malformed ledger is unconfirmed, so alert. */ }

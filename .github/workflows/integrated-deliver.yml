@@ -1,4 +1,4 @@
-name: Deliver reviewed morning text briefing
+name: Deliver reviewed morning PDF
 on:
   workflow_dispatch:
     inputs:
@@ -7,9 +7,13 @@ on:
         type: string
         required: false
       dry_run:
-        description: 'Validate text only; do not send Telegram'
+        description: 'Validate PDF only; do not send Telegram'
         type: boolean
         default: true
+      pdf_followup:
+        description: 'One-time PDF after a confirmed text delivery on this date'
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -23,10 +27,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: main
-      - name: Validate review and deliver text once
+      - run: python3 -m pip install -r requirements-report.txt
+      - name: Validate review and deliver PDF once
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
           REPORT_DATE: ${{ inputs.report_date }}
+          PDF_FOLLOWUP: ${{ inputs.pdf_followup && 'true' || 'false' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}

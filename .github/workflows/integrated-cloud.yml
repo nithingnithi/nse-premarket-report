@@ -26,10 +26,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && github.ref_name || 'main' }}
+      - name: Install PDF renderer
+        run: python3 -m pip install -r requirements-report.txt
       - name: Generate bounded rules-based review
         id: review
         run: python3 -m integrated.cloud_review
-      - name: Publish review and deliver text briefing
+      - name: Publish review and deliver PDF briefing
         if: steps.review.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
         env:
           DRY_RUN: 'false'
@@ -44,7 +46,7 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
           python3 -m integrated.deliver
-      - name: Send unavailable-data status if briefing was not delivered
+      - name: Send unavailable-data PDF if briefing was not delivered
         if: always()
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}

@@ -28,7 +28,7 @@ def send(pdf, filename):
     chat_id = int(chat_text)
     pdf_sha256 = hashlib.sha256(pdf).hexdigest()
     if not pdf.startswith(b"%PDF-") or not pdf:
-        stop("The embedded test PDF failed its integrity check.")
+        stop("The PDF failed its integrity check.")
     opener = urllib.request.build_opener(NoRedirect())
 
     def api(method, parameters=None, body=None, content_type="application/json"):
@@ -76,7 +76,7 @@ def send(pdf, filename):
     chunks = []
     for name, value in [
         ("chat_id", chat_text),
-        ("caption", "NSE Morning Report - PARTIAL TRIAL. Check missing signals, data timestamps and limitations in the PDF."),
+        ("caption", "NSE Morning Report. Check coverage, timestamps and unavailable data in the PDF."),
     ]:
         chunks.append((
             "--" + boundary + "\r\n"
@@ -114,15 +114,14 @@ def send(pdf, filename):
     except Exception:
         stop("Telegram accepted the PDF but the verification download failed. Check Telegram before rerunning.")
     if hashlib.sha256(downloaded).hexdigest() != pdf_sha256:
-        stop("Telegram accepted a document but the downloaded bytes did not match the test PDF.")
-    with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-        summary.write("## Telegram channel delivery verified\n\n")
-        summary.write("Telegram accepted the PDF in the configured channel.\n\n")
-        summary.write("The downloaded copy matches the original PDF by SHA-256.\n\n")
-        summary.write("Partial-trial PDF delivered; missing data and unresolved source validation remain labelled.\n")
+        stop("Telegram accepted a document but the downloaded bytes did not match the PDF.")
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write("## Telegram PDF delivery verified\n\n")
+            summary.write("The downloaded channel PDF matches the original by SHA-256.\n")
     print("CHANNEL_DELIVERY_RESULT: PDF accepted in verified channel; downloaded SHA-256 matches original.")
 
-    return {"status": "SENT", "pdf_sha256": pdf_sha256}
+    return {"status": "SENT", "pdf_sha256": pdf_sha256, "message_id": sent["message_id"]}
 
 
 def send_text(message, opener=None):
