@@ -90,6 +90,7 @@ class API:
         allowed = (version == "v2" and (path in PATHS or re.fullmatch(r"/market/timings/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)))
         if version == "v3":
             allowed = bool(re.fullmatch(r"/historical-candle/NSE_FO%7C[0-9]+/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+                           or re.fullmatch(r"/historical-candle/NSE_INDEX%7C(?:Nifty%2050|Nifty%20Bank|India%20VIX)/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
                            or re.fullmatch(r"/historical-candle/intraday/NSE_FO%7C[0-9]+/days/1", path))
         if not allowed:
             raise CheckFailure("Request path is outside the read-only test allowlist.")

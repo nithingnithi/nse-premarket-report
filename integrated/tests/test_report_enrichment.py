@@ -1,0 +1,93 @@
+"""Synthetic, offline regression cases for the morning PDF data path."""
+import datetime as dt
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from pypdf import PdfReader
+
+from integrated.collect import global_row, index_daily, option_summary
+from integrated.adapters import flows
+from integrated.render import render
+
+
+IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
+
+
+class ReportEnrichmentTests(unittest.TestCase):
+    def test_new_bank_nifty_strike_keeps_current_levels_but_withholds_change(self):
+        expiry = '2026-11-17'
+        def row(strike, side, ident, oi):
+            return {'FinInstrmTp': 'IDO', 'XpryDt': expiry, 'StrkPric': str(strike),
+                    'OptnTp': side, 'FinInstrmId': ident, 'NewBrdLotQty': 30,
+                    'OpnIntrst': oi}
+        old = {'date': '2026-11-12', 'data': [{'symbol': 'BANKNIFTY',
+            'selected_option_expiry': expiry, 'source_rows': [row(100, 'CE', 1, 20), row(100, 'PE', 2, 30)]}]}
+        new = {'date': '2026-11-13', 'data': [{'symbol': 'BANKNIFTY',
+            'selected_option_expiry': expiry, 'source_rows': [row(100, 'CE', 1, 25), row(100, 'PE', 2, 35),
+                                                               row(110, 'CE', 3, 10), row(110, 'PE', 4, 15)]}]}
+        result = option_summary(old, new, 'BANKNIFTY')
+        self.assertEqual(result['status'], 'PARTIAL')
+        self.assertEqual(result['strikes'], 2)
+        self.assertIn('2 added, 0 removed, 0 changed IDs', result['reason'])
+        self.assertAlmostEqual(float(result['pcr_current']), 50 / 35)
+        self.assertIsNone(result['pcr_previous'])
+        self.assertIsNone(result['pcr_direction'])
+        self.assertIsNone(result['call_oi_change'])
+
+    def test_global_prior_close_and_after_cutoff_are_distinct(self):
+        cutoff = dt.datetime(2026, 11, 16, 7, 45, tzinfo=IST)
+        row = global_row('DOW JONES', {'status': 'PASS', 'last_price': 100,
+            'last_trade_IST': '2026-11-13T23:59:00+05:30'}, cutoff)
+        self.assertEqual((row['status'], row['value']), ('PRIOR QUOTE', 100))
+        row = global_row('GIFT NIFTY', {'status': 'PASS', 'last_price': 101,
+            'last_trade_IST': '2026-11-16T07:45:56+05:30'}, cutoff)
+        self.assertEqual((row['status'], row['value']), ('AFTER CUTOFF', None))
+        self.assertIn('after 07:45', row['reason'])
+        row = global_row('STALE', {'status': 'PASS', 'last_price': 99,
+            'last_trade_IST': '2026-11-09T07:44:00+05:30'}, cutoff)
+        self.assertEqual((row['status'], row['value']), ('STALE', None))
+
+    def test_index_daily_requires_two_exact_completed_sessions(self):
+        class FakeAPI:
+            def get(self, path, version):
+                self.path = path
+                self.version = version
+                return {'candles': [
+                    ['2026-11-13T00:00:00+05:30', 101, 106, 100, 105, 0, 0],
+                    ['2026-11-12T00:00:00+05:30', 101, 102, 99, 100, 0, 0]]}
+        api = FakeAPI()
+        result = index_daily(api, 'NSE_INDEX|Nifty 50', ['2026-11-13', '2026-11-12'],
+                             dt.datetime(2026, 11, 16, 7, 45, tzinfo=IST))
+        self.assertEqual((result['close'], result['previous_close'], result['change_pct']), ('105', '100', '5'))
+        self.assertIn('NSE_INDEX%7CNifty%2050/days/1/2026-11-13/2026-11-12', api.path)
+        self.assertEqual(api.version, 'v3')
+
+    def test_pdf_shows_observed_values_without_changing_score(self):
+        s = json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r = json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        s['spot'] = {'NIFTY': {'status': 'PASS', 'close': '105', 'change_pct': '5', 'latest_date': '2026-10-27'}}
+        s['vix_daily'] = {'status': 'PASS', 'close': '16', 'change_pct': '-2', 'latest_date': '2026-10-27'}
+        s['options']['BANKNIFTY'] = {'status': 'PARTIAL', 'expiry': '2026-10-29', 'pcr_current': '1.25',
+            'pcr_previous': None, 'call_walls': ['110'], 'put_walls': ['100'], 'max_pain': ['100'],
+            'reason': 'Contract universe changed: 2 added, 0 removed, 0 changed IDs; PCR direction and OI change withheld'}
+        s['flows'] = [{'check': 'NIFTY futures', 'status': 'PASS', 'expiry': '2026-10-29',
+            'daily_observations': [{'close': '105', 'oi_raw': 120, 'date': '2026-10-27'},
+                                   {'close': '100', 'oi_raw': 100, 'date': '2026-10-26'}]},
+            {'check': 'FII cash', 'status': 'PASS', 'net_sum_last_3_raw': '6', 'net_sum_last_5_raw': '10',
+             'observations': [{'date': f'2026-10-{d}', 'net_raw': '2'} for d in (27, 26, 23, 22, 21)]}]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'report.pdf'
+            render(s, r, path)
+            reader = PdfReader(path)
+            self.assertEqual(len(reader.pages), 2)
+            content = '\n'.join(page.extract_text() for page in reader.pages)
+            for expected in ('D 16', 'NIFTY spot', 'BANKNIFTY', '1.25', 'Contract universe changed',
+                             'OI 120', '10-27:+2', 'shadow, not counted', 'Insufficient data for final bias'):
+                self.assertIn(expected, content)
+            self.assertEqual(s['score']['score'], -1)
+
+
+if __name__ == '__main__':
+    unittest.main()

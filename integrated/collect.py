@@ -8,8 +8,9 @@ from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
+import urllib.parse
 from integrated.adapters import flows, global_data, news, calendar, archive
-from nse_report.calculations import OptionChain, OptionRow, compare_options, score_summary
+from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -48,9 +49,86 @@ def option_summary(old,new,symbol):
         if not pairs or any(set(p)!={'CE','PE'} for p in pairs.values()):raise ValueError('Unpaired')
         identities.append(ids)
         chains.append(OptionChain(symbol,expiry,snap['date'],'UNVERIFIED_RAW','NSE_ARCHIVE',tuple(OptionRow(k,p['CE'],p['PE']) for k,p in pairs.items())))
-    if identities[0]!=identities[1] or len(lots)!=1:raise ValueError('Contract universe changed')
+    if len(lots)!=1:raise ValueError('Multiple lot sizes in selected option expiry')
+    if identities[0]!=identities[1]:
+        current=option_metrics(chains[1],expected_strikes=[r.strike for r in chains[1].rows])
+        old_keys,new_keys=set(identities[0]),set(identities[1])
+        changed=sum(identities[0][k]!=identities[1][k] for k in old_keys & new_keys)
+        reason=(f'Contract universe changed: {len(new_keys-old_keys)} added, '
+                f'{len(old_keys-new_keys)} removed, {changed} changed IDs; '
+                'PCR direction and OI change withheld')
+        return clean({'status':'PARTIAL','reason':reason,'expiry':expiry,
+                      'strikes':len(chains[1].rows),'unit':'UNVERIFIED_RAW',
+                      'pcr_previous':None,'pcr_current':current['pcr'],
+                      'pcr_direction':None,'call_walls':current['call_walls'],
+                      'put_walls':current['put_walls'],
+                      'max_pain':current['max_pain_strikes'],
+                      'call_oi_change':None,'put_oi_change':None})
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
     return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
+
+def global_row(name, result, cutoff):
+    """Keep useful prior-session observations, never post-cutoff quotes."""
+    row={'name':name,'value':None,'asof':None,'status':'UNAVAILABLE',
+         'reason':'No validated provider observation'}
+    if result.get('status')!='PASS':
+        row['reason']=result.get('reason') or 'Provider schema or timestamp check incomplete'
+        return row
+    price=result.get('last_price',result.get('last_closed_minute_price'))
+    stamp=result.get('last_trade_IST',result.get('bar_start_IST'))
+    if not global_data.number(price,positive=True) or not isinstance(stamp,str):
+        row['reason']='Price or observation time missing'
+        return row
+    try:
+        observed=dt.datetime.fromisoformat(stamp)
+        if observed.tzinfo is None:raise ValueError('no timezone')
+    except ValueError:
+        row['reason']='Observation time has no valid timezone'
+        return row
+    if 'bar_start_IST' in result and observed+dt.timedelta(minutes=1)>cutoff:
+        row.update(status='AFTER CUTOFF',reason='One-minute bar was unfinished at 07:45 IST')
+        return row
+    if observed>cutoff:
+        row.update(status='AFTER CUTOFF',reason='Last trade was after 07:45 IST')
+        return row
+    age=cutoff-observed
+    if age>dt.timedelta(hours=96):
+        row.update(status='STALE',reason='Last trade was more than four days before cutoff')
+        return row
+    row.update(value=price,asof=stamp,status='PROVISIONAL' if age<=dt.timedelta(hours=18) else 'PRIOR QUOTE',
+               reason='Last observed quote; market-session completeness not verified')
+    return row
+
+def index_daily(api, key, sessions, cutoff):
+    """Two exact completed NSE sessions; daily bar starts are not quote times."""
+    if len(sessions)<2 or not sessions[1]<sessions[0]<cutoff.date().isoformat():
+        raise flows.CheckFailure('Two completed NSE sessions are required')
+    path=('/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'
+          +sessions[0]+'/'+sessions[1])
+    bars=flows.daily_bars(api.get(path,version='v3'),cutoff)
+    if any(day not in bars for day in sessions[:2]):
+        raise flows.CheckFailure('Daily close missing for a required NSE session')
+    current=Decimal(bars[sessions[0]]['close']);previous=Decimal(bars[sessions[1]]['close'])
+    return clean({'status':'PASS','latest_date':sessions[0],'previous_date':sessions[1],
+                  'close':current,'previous_close':previous,'change':current-previous,
+                  'change_pct':(current-previous)*100/previous,'unit':'index points'})
+
+def index_result(api,key,sessions,cutoff):
+    try:return index_daily(api,key,sessions,cutoff)
+    except flows.CheckFailure as exc:return {'status':'UNAVAILABLE','reason':str(exc)[:160]}
+    except Exception:return {'status':'UNAVAILABLE','reason':'Daily index request or schema failed'}
+
+_OPTION_FAILURES={'Expiry changed','Duplicate','Unpaired',
+                  'Multiple lot sizes in selected option expiry',
+                  'Unexpected option baseline sessions','Mixed option underlying, expiry, units or providers',
+                  'Unexpected option strikes','Incomplete option universe','Duplicate option strike'}
+
+def option_result(old,new,symbol):
+    try:return option_summary(old,new,symbol)
+    except ValueError as exc:
+        reason=str(exc)
+        return {'status':'UNAVAILABLE','reason':reason if reason in _OPTION_FAILURES else 'Option validation failed'}
+    except Exception:return {'status':'UNAVAILABLE','reason':'Option request or schema failed'}
 
 def cash_signal(row, sessions):
     """User-approved rule: sign of five completed-session net; no DII offset."""
@@ -119,11 +197,15 @@ def main():
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
                 compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
+                sessions=cal['completed_sessions']['NSE']
+                compact['spot']={name:index_result(api,key,sessions,cutoff) for name,key in
+                                 (('NIFTY',flows.INDICES['Nifty']),('BANKNIFTY',flows.INDICES['Bank Nifty']))}
+                compact['vix_daily']=index_result(api,flows.INDICES['India VIX'],sessions,cutoff)
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
                     for symbol in ('NIFTY','BANKNIFTY'):
-                        compact['options'][symbol]=attempt(lambda symbol=symbol:option_summary(full[dates[1]],full[dates[0]],symbol))
+                        compact['options'][symbol]=option_result(full[dates[1]],full[dates[0]],symbol)
                     compact['archive_sources']=[full[d].get('source') for d in dates]
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
@@ -145,13 +227,7 @@ def main():
                     for name,item in instruments.items():
                         r=attempt(lambda item=item:global_data.indicator_check(gapi,item,cutoff) if item['segment']=='GLOBAL_INDICATOR' else global_data.global_quote_check(gapi,item,now))
                         full.setdefault('global',[]).append(r)
-                        stamp=r.get('last_trade_IST',r.get('bar_start_IST'))
-                        eligible=False
-                        try:
-                            t=dt.datetime.fromisoformat(stamp);eligible=t.tzinfo is not None and cutoff-dt.timedelta(hours=18)<=t<=cutoff
-                            if 'bar_start_IST' in r:eligible=eligible and t+dt.timedelta(minutes=1)<=cutoff
-                        except (ValueError,TypeError):pass
-                        compact['global'].append({'name':name,'value':r.get('last_price',r.get('last_closed_minute_price')) if eligible else None,'asof':stamp if eligible else None,'status':'PROVISIONAL' if eligible else 'UNAVAILABLE','note':'Benchmark, units and market-session freshness unverified'})
+                        compact['global'].append(global_row(name,r,cutoff))
             news.MAX_PAGES=2
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=6),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
