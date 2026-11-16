@@ -60,7 +60,7 @@ def format_report(snapshot, review):
         elif name.endswith('futures'):
             detail=f"expiry {row.get('expiry','N/A')}; "+', '.join(f"{x.get('date','?')} close {x.get('close','N/A')} OI {x.get('oi_raw','N/A')}" for x in observations[:2])
         lines.append(f"{name}: {row.get('status','N/A')} | {detail}")
-    lines += ['', 'Recent news (12h to 07:45 IST):']
+    prefix = lines
     eligible=[];seen=set()
     for row in snapshot.get('news',[]):
         try:published=datetime.fromisoformat(row['published_IST'])
@@ -69,18 +69,27 @@ def format_report(snapshot, review):
         key=(row.get('url') or row.get('title','')).casefold()
         if key in seen:continue
         seen.add(key);eligible.append(row)
-    if eligible:
-        for row in eligible:
-            lines.append(f"• {short(row.get('title'),80)} | {row.get('outlet','outlet N/A')} | {stamp(row.get('published_IST'))}\n{row.get('url','link N/A')}")
-    else:
-        lines.append('No verified recent news')
-    lines.append(f"News: {len(eligible)} shown of {snapshot.get('news_matched_count','N/A')} matched in the window | {snapshot.get('news_status','N/A')}")
-    if snapshot.get('news_note'):lines.append(short(snapshot['news_note'],100))
-    lines += ['', 'Calendar:']
-    for row in snapshot.get('calendar', []):
-        lines.append(f"{short(row.get('title'),45)} | {stamp(row.get('scheduled_IST'))} | {row.get('source','link N/A')}")
-    lines += ['', f"Data: {snapshot.get('collection_status','N/A')} | collected {stamp(snapshot.get('collected_at_IST'))}"]
-    message = '\n'.join(lines)
+    news_rows = [f"• {short(row.get('title'),80)} | {row.get('outlet','outlet N/A')} | {stamp(row.get('published_IST'))}\n{row.get('url','link N/A')}" for row in eligible]
+    calendar_rows = [f"{short(row.get('title'),45)} | {stamp(row.get('scheduled_IST'))} | {row.get('source','link N/A')}" for row in snapshot.get('calendar', [])]
+
+    def compose():
+        news_display = news_rows or (['Recent items omitted to fit Telegram limit'] if eligible else ['No verified recent news'])
+        lines = prefix + ['', 'Recent news (12h to 07:45 IST):'] + news_display
+        lines.append(f"News: {len(news_rows)} shown of {snapshot.get('news_matched_count','N/A')} matched in the window | {snapshot.get('news_status','N/A')}")
+        if snapshot.get('news_note'):lines.append(short(snapshot['news_note'],100))
+        lines += ['', 'Calendar:'] + calendar_rows
+        if len(calendar_rows) < len(snapshot.get('calendar', [])):
+            lines.append(f"Calendar: {len(calendar_rows)} shown of {len(snapshot['calendar'])} (Telegram limit)")
+        lines += ['', f"Data: {snapshot.get('collection_status','N/A')} | collected {stamp(snapshot.get('collected_at_IST'))}"]
+        return '\n'.join(lines)
+
+    message = compose()
+    while len(message) > 4096 and calendar_rows:
+        calendar_rows.pop()
+        message = compose()
+    while len(message) > 4096 and news_rows:
+        news_rows.pop()
+        message = compose()
     if not 1 <= len(message) <= 4096:
         raise ValueError('Plain-text report exceeds Telegram message limit')
     return message
