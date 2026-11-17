@@ -57,9 +57,11 @@ def run(root,now):
             delivery=json.loads(ledger.read_text())
         except (OSError,ValueError):
             raise ValueError('Delivery ledger is malformed or uncertain')
+        hashes=[delivery.get(key) for key in ('pdf_sha256','text_sha256')]
+        confirmed_hash=any(isinstance(value,str) and re.fullmatch(r'[a-f0-9]{64}',value)
+                           for value in hashes)
         if (delivery.get('report_date')==day and delivery.get('status')=='SENT'
-                and isinstance(delivery.get('text_sha256'),str)
-                and re.fullmatch(r'[a-f0-9]{64}',delivery['text_sha256'])
+                and confirmed_hash
                 and type(delivery.get('message_id')) is int and delivery['message_id']>0):
             return False
         raise ValueError('Delivery is reserved or unconfirmed; no automatic retry')

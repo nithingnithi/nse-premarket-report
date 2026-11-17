@@ -77,6 +77,21 @@ class CloudReviewTests(unittest.TestCase):
             (root/'delivery_ledger').mkdir()
             (root/'delivery_ledger/2026-10-28.json').write_text(json.dumps({'report_date':'2026-10-28','status':'SENT','text_sha256':'a'*64,'message_id':1}))
             self.assertFalse(run(root,self.now))
+    def test_confirmed_pdf_ledger_skips_duplicate(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            (root/'delivery_ledger').mkdir()
+            (root/'delivery_ledger/2026-10-28.json').write_text(json.dumps({
+                'report_date':'2026-10-28','status':'SENT','pdf_sha256':'a'*64,'message_id':7}))
+            self.assertFalse(run(root,self.now))
+            self.assertFalse((root/'review_requests').exists())
+    def test_pdf_ledger_without_confirmed_hash_still_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.setup_root(root)
+            (root/'delivery_ledger').mkdir()
+            (root/'delivery_ledger/2026-10-28.json').write_text(json.dumps({
+                'report_date':'2026-10-28','status':'SENT','pdf_sha256':'bad','message_id':7}))
+            with self.assertRaises(ValueError):run(root,self.now)
     def test_existing_review_without_delivery_fails_visibly(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);self.setup_root(root)
