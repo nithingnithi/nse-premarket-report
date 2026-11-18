@@ -88,9 +88,11 @@ class API:
         self.opener = urllib.request.build_opener(NoRedirect())
 
     def get(self, path, params, envelope=False, version="v2"):
-        indicator_path = re.fullmatch(r"/historical-candle/intraday/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1", path)
-        indicator_history = re.fullmatch(r"/historical-candle/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
-        indicator_daily = re.fullmatch(r"/historical-candle/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+        candle_key = (r"GLOBAL_(?:INDICATOR%7C(?:USDINR|BZUSD|CLUSD)|"
+                      r"INDEX%7C(?:[A-Za-z0-9._-]|%20|%5E){1,80})")
+        indicator_path = re.fullmatch(r"/historical-candle/intraday/" + candle_key + r"/minutes/1", path)
+        indicator_history = re.fullmatch(r"/historical-candle/" + candle_key + r"/minutes/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+        indicator_daily = re.fullmatch(r"/historical-candle/" + candle_key + r"/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
         if not ((version == "v2" and path in PATHS)
                 or (version == "v3" and (path in ("/market-quote/quotes", "/market-quote/ltp") or indicator_path or indicator_history or indicator_daily))):
             raise CheckFailure("Request path is outside the read-only test allowlist.")
@@ -264,6 +266,11 @@ def global_quote_check(api, instrument, now, batch=None, batch_error=None):
             result = global_quote(data, instrument, observed_at)
             result["observed_at_IST"] = observed_at.isoformat()
             result["selected_method"] = method
+            if method == "v3_full_quote":
+                quote = next(row for row in data.values() if isinstance(row, dict)
+                             and row.get("instrument_token") == instrument["instrument_key"])
+                previous = quote.get("prev_close_price")
+                result["previous_close_raw"] = previous if number(previous, True) else None
             if method == "v3_ltp":
                 # LTP's documented cp is the previous close. Its schema does
                 # not document quote/trade timestamps, so it cannot prove freshness.
@@ -272,7 +279,9 @@ def global_quote_check(api, instrument, now, batch=None, batch_error=None):
                 result["previous_close_raw"] = row.get("cp") if number(row.get("cp"), True) else None
                 result["status"] = "PARTIAL"
             attempts.append({"method": method, "status": result["status"]})
-            if result["status"] == "PASS":
+            if (result["status"] == "PASS" and
+                    (result.get("provider_net_change_raw") is not None or
+                     result.get("previous_close_raw") is not None)):
                 return {**result, "method_attempts": attempts}
             if best is None:
                 best = result

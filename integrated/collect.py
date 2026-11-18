@@ -114,6 +114,23 @@ def global_row(name, result, cutoff):
         row['change_reason']=result.get('previous_close_reason') or 'No validated previous daily close'
     return row
 
+def global_observation(api, instrument, cutoff, observed_now):
+    """Use the last completed minute when a live global index quote is post-cutoff."""
+    name=instrument['name']
+    if instrument['segment']=='GLOBAL_INDICATOR':
+        result=global_data.indicator_check(api,instrument,cutoff)
+    else:
+        result=global_data.global_quote_check(api,instrument,observed_now)
+    row=global_row(name,result,cutoff)
+    if instrument['segment']=='GLOBAL_INDEX' and row['status']=='AFTER CUTOFF':
+        candle=global_data.indicator_check(api,instrument,cutoff)
+        candidate=global_row(name,candle,cutoff)
+        if candidate['status']=='PROVISIONAL':
+            return candle,candidate
+        row['cutoff_fallback_reason']=candidate['reason']
+        row['reason']+='; no completed minute before cutoff: '+candidate['reason']
+    return result,row
+
 def index_daily(api, key, sessions, cutoff, exchange='NSE'):
     """Two exact completed exchange sessions; daily bar starts are not quote times."""
     if len(sessions)<2 or not sessions[1]<sessions[0]<cutoff.date().isoformat():
@@ -279,9 +296,11 @@ def main():
                 instruments=attempt(lambda:global_data.instruments(global_data.global_file()))
                 if isinstance(instruments,dict) and 'status' not in instruments:
                     for name,item in instruments.items():
-                        r=attempt(lambda item=item:global_data.indicator_check(gapi,item,cutoff) if item['segment']=='GLOBAL_INDICATOR' else global_data.global_quote_check(gapi,item,now))
+                        observation=attempt(lambda item=item:global_observation(gapi,item,cutoff,now))
+                        r,row=(observation if isinstance(observation,tuple) else
+                               (observation,global_row(name,observation,cutoff)))
                         full.setdefault('global',[]).append(r)
-                        compact['global'].append(global_row(name,r,cutoff))
+                        compact['global'].append(row)
             news.MAX_PAGES=4
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
