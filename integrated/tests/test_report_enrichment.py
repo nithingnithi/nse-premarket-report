@@ -8,7 +8,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from integrated.collect import global_row, index_daily, option_summary
-from integrated.adapters import flows
+from integrated.adapters import flows, global_data
 from integrated.render import render
 
 
@@ -48,6 +48,42 @@ class ReportEnrichmentTests(unittest.TestCase):
         row = global_row('STALE', {'status': 'PASS', 'last_price': 99,
             'last_trade_IST': '2026-11-09T07:44:00+05:30'}, cutoff)
         self.assertEqual((row['status'], row['value']), ('STALE', None))
+    def test_global_change_uses_documented_net_change_not_ohlc_close(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        row=global_row('DOW JONES',{'status':'PASS','last_price':100,
+            'ohlc_close_raw':100,'provider_net_change_raw':-5,
+            'last_trade_IST':'2026-11-18T01:29:00+05:30'},cutoff)
+        self.assertEqual(row['previous_close'],'105')
+        self.assertAlmostEqual(float(row['change_pct']),-5/105*100)
+
+    def test_indicator_change_uses_prior_completed_daily_close(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        class FakeAPI:
+            auth_failed=False
+            def get(self,path,params,version):
+                if '/days/1/' in path:
+                    return {'candles':[
+                        ['2026-11-18T00:00:00+05:30',80,82,79,float('nan'),0,0],
+                        ['2026-11-17T00:00:00+05:30',78,81,77,80,0,0]]}
+                return {'candles':[['2026-11-18T07:43:00+05:30',81,82,80,81,0,0]]}
+        instrument={'instrument_key':'GLOBAL_INDICATOR|BZUSD','name':'Oil (Brent)'}
+        result=global_data.indicator_check(FakeAPI(),instrument,cutoff)
+        row=global_row('Oil (Brent)',result,cutoff)
+        self.assertEqual((row['previous_close'],row['change_pct']),('80','1.25'))
+
+    def test_indicator_invalid_completed_baseline_keeps_change_unavailable(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        class FakeAPI:
+            auth_failed=False
+            def get(self,path,params,version):
+                if '/days/1/' in path:
+                    return {'candles':[['2026-11-17T00:00:00+05:30',78,81,77,float('nan'),0,0]]}
+                return {'candles':[['2026-11-18T07:43:00+05:30',81,82,80,81,0,0]]}
+        result=global_data.indicator_check(FakeAPI(),{'instrument_key':'GLOBAL_INDICATOR|BZUSD'},cutoff)
+        row=global_row('Oil (Brent)',result,cutoff)
+        self.assertEqual(row['value'],81)
+        self.assertNotIn('change_pct',row)
+        self.assertIn('daily close',row['change_reason'])
 
     def test_index_daily_requires_two_exact_completed_sessions(self):
         class FakeAPI:
@@ -84,7 +120,7 @@ class ReportEnrichmentTests(unittest.TestCase):
             self.assertEqual(len(reader.pages), 2)
             content = '\n'.join(page.extract_text() for page in reader.pages)
             for expected in ('D 16', 'NIFTY spot', 'BANKNIFTY', '1.25', 'Contract universe changed',
-                             'OI 120', '10-27:+2', 'shadow, not counted', 'Insufficient data for final bias'):
+                             'OI 120', '10-27:+2', 'Opening picture', 'Insufficient data for final bias'):
                 self.assertIn(expected, content)
             self.assertEqual(s['score']['score'], -1)
 

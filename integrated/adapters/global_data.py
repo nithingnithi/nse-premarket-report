@@ -90,8 +90,9 @@ class API:
     def get(self, path, params, envelope=False, version="v2"):
         indicator_path = re.fullmatch(r"/historical-candle/intraday/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1", path)
         indicator_history = re.fullmatch(r"/historical-candle/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/minutes/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+        indicator_daily = re.fullmatch(r"/historical-candle/GLOBAL_INDICATOR%7C(?:USDINR|BZUSD|CLUSD)/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
         if not ((version == "v2" and path in PATHS)
-                or (version == "v3" and (path in ("/market-quote/quotes", "/market-quote/ltp") or indicator_path or indicator_history))):
+                or (version == "v3" and (path in ("/market-quote/quotes", "/market-quote/ltp") or indicator_path or indicator_history or indicator_daily))):
             raise CheckFailure("Request path is outside the read-only test allowlist.")
         request = urllib.request.Request(
             "https://api.upstox.com/" + version + path + ("?" + urllib.parse.urlencode(params) if params else ""),
@@ -312,6 +313,40 @@ def indicator_candles(data, instrument, now):
             "identity_note": "Identity is bound to the requested provider key; candle responses do not repeat the instrument key. Benchmark construction and units remain unverified."}
 
 
+def indicator_previous_close(api, instrument, now, bar_start):
+    """Use the latest completed provider daily candle before the minute bar's date."""
+    key = urllib.parse.quote(instrument["instrument_key"], safe="")
+    end = bar_start.date()
+    first = end - dt.timedelta(days=7)
+    path = f"/historical-candle/{key}/days/1/{end}/{first}"
+    data = api.get(path, {}, version="v3")
+    if not isinstance(data, dict) or not isinstance(data.get("candles"), list):
+        raise CheckFailure("Previous daily close response has no candle array.")
+    candidates, dates = [], set()
+    for row in data["candles"]:
+        if not isinstance(row, list) or len(row) < 7:
+            raise CheckFailure("Previous daily close has an invalid candle schema.")
+        stamp = timestamp(row[0], now)
+        if stamp is None:
+            raise CheckFailure("Previous daily close has an invalid timestamp.")
+        day = dt.datetime.fromisoformat(stamp).date()
+        if day in dates:
+            raise CheckFailure("Previous daily close has duplicate dates.")
+        dates.add(day)
+        if day < end:
+            candidates.append((day, row))
+    if not candidates:
+        raise CheckFailure("Previous completed daily close is missing.")
+    day, row = max(candidates, key=lambda item: item[0])
+    if (end - day).days > 4:
+        raise CheckFailure("Previous daily close is stale by more than four days.")
+    if (not all(number(value, True) for value in row[1:5])
+            or not all(number(value) for value in row[5:7])
+            or not row[3] <= min(row[1], row[4]) <= max(row[1], row[4]) <= row[2]):
+        raise CheckFailure("Previous daily close has invalid OHLCV/OI values.")
+    return {"previous_close_raw": row[4], "previous_close_date": day.isoformat()}
+
+
 def indicator_check(api, instrument, now):
     key = urllib.parse.quote(instrument["instrument_key"], safe="")
     today, first = now.date().isoformat(), (now.date() - dt.timedelta(days=3)).isoformat()
@@ -326,6 +361,11 @@ def indicator_check(api, instrument, now):
             observed_at = getattr(api, "last_response_at", now)
             result = indicator_candles(data, instrument, observed_at)
             result["observed_at_IST"] = observed_at.isoformat()
+            try:
+                result.update(indicator_previous_close(api, instrument, now,
+                    dt.datetime.fromisoformat(result["bar_start_IST"])))
+            except CheckFailure as exc:
+                result["previous_close_reason"] = str(exc)
             attempts.append({"method": method, "status": "PASS"})
             return {**result, "selected_method": method, "method_attempts": attempts}
         except CheckFailure as exc:

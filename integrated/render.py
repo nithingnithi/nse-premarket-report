@@ -35,6 +35,10 @@ def signed(v,places=2):
         if not d.is_finite():return 'N/A'
         return ('+' if d>0 else '')+number(d,places)
     except (InvalidOperation,ValueError):return 'N/A'
+def reason(row):
+    if row.get('status')=='AFTER CUTOFF':return 'Quote after 07:45 cutoff'
+    if row.get('status')=='STALE':return 'Quote older than four days'
+    return str(row.get('reason') or 'No validated observation')[:42]
 def render(s,r,path):
     Path(path).parent.mkdir(parents=True,exist_ok=True)
     for font_path in ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/System/Library/Fonts/Supplemental/Georgia.ttf'):
@@ -66,7 +70,7 @@ def render(s,r,path):
         p(title,42,795,500,27,'#FFFFFF',True)
         p(kicker,43,754,505,9,'#BDD1D9')
         c.setStrokeColor(HexColor(LINE));c.line(28,28,567,28)
-        p('PARTIAL TRIAL  /  Evidence before conviction',28,20,440,7,MUTED)
+        p('Source times and missing fields are shown; score uses available signals only.',28,20,440,7,MUTED)
         p(f'{page:02d} / 02',525,20,45,7,MUTED,True)
     day=dt.date.fromisoformat(s['report_date']).strftime('%d %B %Y')
     base(1,'The market, in perspective.',day+'  |  07:45 IST cutoff  |  Selected data, explicit gaps')
@@ -80,7 +84,7 @@ def render(s,r,path):
         vix_note='D '+number(vd.get('close'))+' | change '+signed(vd.get('change_pct'))+'%'
     elif v.get('status')=='PASS':
         vix_note='Last '+number(v.get('last_price'))+' | change N/A'
-    else:vix_note='Level N/A | change N/A'
+    else:vix_note='N/A: '+reason(vd if vd else v)
     for i,(tag,value,note) in enumerate([
         ('RAW SCORE',str(q['score']),'Possible range ['+text(q['score_range'])+']'),
         ('COVERAGE',f'{q["available"]} / 6','Valid signals; missing is not zero'),
@@ -97,19 +101,65 @@ def render(s,r,path):
     for i,a in enumerate(r['alerts']):
         x=28+i*183;rect(x,437,173,82,'#FFFFFF',6);p(f'0{i+1}',x+10,427,25,11,AMBER,True)
         p(text(a),x+10,406,153,8.5,maxh=48)
-    section('02','The read-through',342)
-    p(text(r['summary']),28,314,539,9.3,maxh=119)
-    section('03','News radar / last 12 hours',183)
-    news=s.get('news',[])[:6]
-    if not news:p('N/A / No eligible stories supplied.',28,155,539,9,MUTED)
+    section('02','Opening picture',342)
+    markets={row.get('name'):row for row in s.get('global',[])}
+    nifty=s.get('spot',{}).get('NIFTY',{})
+    gift=markets.get('GIFT NIFTY',{})
+    try:
+        if gift.get('status')!='PROVISIONAL' or not str(gift.get('asof','')).startswith(s['report_date']) or nifty.get('status')!='PASS':
+            raise ValueError('No current pre-open indication')
+        gap=Decimal(str(gift['value']))-Decimal(str(nifty['close']))
+        gap_pct=gap*100/Decimal(str(nifty['close']))
+        opening='GIFT Nifty vs Nifty close: '+signed(gap)+' points ('+signed(gap_pct)+'%)'
+    except (KeyError,TypeError,ValueError,InvalidOperation,ZeroDivisionError):
+        source=gift if gift.get('value') is None else nifty
+        opening='GIFT Nifty vs Nifty close: N/A ('+reason(source)[:31]+')'
+    p(opening,28,314,539,9,INK,True,maxh=13)
+    def market_line(name):
+        row=markets.get(name,{})
+        return name+' '+number(row.get('value'))+' ('+signed(row.get('change_pct'))+'%)'
+    p('Global: '+market_line('DOW JONES')+' | '+market_line('S&P')+' | '+market_line('NIKKEI 225'),28,296,539,8,maxh=13)
+    p('Forex & oil: '+market_line('USD INR')+' | '+market_line('Oil (Brent)'),28,280,539,8,maxh=13)
+    opt=s.get('options',{}).get('NIFTY',{})
+    try:
+        spot_level=Decimal(str(nifty['close']))
+        put_distance=signed(Decimal(str(opt['put_walls'][0]))-spot_level) if len(opt.get('put_walls',[]))==1 else 'N/A'
+        call_distance=signed(Decimal(str(opt['call_walls'][0]))-spot_level) if len(opt.get('call_walls',[]))==1 else 'N/A'
+    except (KeyError,TypeError,ValueError,InvalidOperation):put_distance=call_distance='N/A'
+    try:countdown=str((dt.date.fromisoformat(opt['expiry'])-dt.date.fromisoformat(s['report_date'])).days)+'d'
+    except (KeyError,TypeError,ValueError):countdown='N/A'
+    p('Nifty walls vs spot: put '+put_distance+' | call '+call_distance+' pts | expiry in '+countdown,28,264,539,8,maxh=13)
+    flows={row.get('check'):row for row in s.get('flows',[])}
+    def daily(name):return ((flows.get(name,{}).get('observations') or [{}])[0].get('net_raw')
+                            if flows.get(name,{}).get('status')=='PASS' else None)
+    p('Previous session cash: FII '+signed(daily('FII cash'))+' / DII '+signed(daily('DII cash'))+' ₹ cr',28,248,539,8,maxh=13)
+    section('03','News / last 12 hours',225)
+    news=s.get('news',[])[:8]
+    if news:
+        p(text(s.get('news_note') or f'{len(news)} selected from the saved 12-hour window.'),28,207,539,6.3,MUTED,maxh=9)
+    if not news:p('News N/A: '+text(s.get('news_note') or 'No relevant stories in the cutoff window.'),28,197,539,8,MUTED,maxh=20)
     for i,a in enumerate(news):
-        x=28+(i%2)*275;top=155-(i//2)*39
+        x=28+(i%2)*275;top=197-(i//2)*40
         url=a.get('url') or '';parsed=urlsplit(url)
-        title=text(str(a.get('title') or 'N/A')[:160])
+        raw_title=str(a.get('title') or 'N/A')
+        title=text(raw_title[:102]+'...' if len(raw_title)>105 else raw_title)
         if parsed.scheme in ('https','http') and parsed.netloc:title=f'<link href="{escape(url,quote=True)}" color="{TEAL}">{title}</link>'
-        p(stamp(a.get('published_IST')),x,top,261,6.5,MUTED)
-        p(title,x,top-10,261,8,maxh=27)
-    p('Selected-query sample; linked headlines retain source wording. Syndicated duplicates may remain.',28,34,539,6.5,MUTED)
+        outlet=a.get('source') or parsed.hostname or 'Source N/A'
+        p(text(outlet)+' | '+stamp(a.get('published_IST')),x,top,261,6.5,MUTED,maxh=9)
+        p(title,x,top-10,261,7,maxh=30)
+    if len(news)<=2:
+        rect(28,155,539,97,'#FFFFFF',6)
+        label('Why some fields are missing',39,145)
+        missing_markets=[a for a in s.get('global',[]) if a.get('value') is None]
+        market_gap=(', '.join(str(a.get('name'))+': '+reason(a) for a in missing_markets[:2])
+                    or 'No market quote withheld')
+        p(text(market_gap),39,128,517,7.5,maxh=16)
+        missing_changes=[a for a in s.get('global',[]) if a.get('value') is not None and a.get('change_pct') is None]
+        change_gap='; '.join(str(a.get('name'))+': '+str(a.get('change_reason') or 'previous close unavailable')
+                             for a in missing_changes[:2])
+        p('Change % N/A: '+text(change_gap) if missing_changes
+          else 'Global change percentages use saved previous closes where available.',39,108,517,7.5,maxh=16)
+        p('News: '+text(s.get('news_note') or 'No validated relevant stories in the saved window.'),39,88,517,7.2,maxh=25)
     c.showPage();base(2,'The numbers behind the view.',day+'  |  Source observations  |  N/A means unavailable')
     section('04','Across markets',712)
     # A true table with aligned values and timestamps; no fabricated sparklines.
@@ -120,12 +170,13 @@ def render(s,r,path):
         if spot.get('status')=='PASS':
             value=number(spot.get('close'))+' ('+signed(spot.get('change_pct'))+'%)'
             asof=text(spot.get('latest_date'))+' close'
-        else:value='N/A';asof='N/A'
+        else:value='N/A';asof=reason(spot)
         rows.append({'name':name+' spot','display_value':value,'display_asof':asof,
                      'status':'D CLOSE' if spot.get('status')=='PASS' else 'UNAVAILABLE'})
     for a in s.get('global',[])[:9]:
         rows.append({'name':a['name'],'display_value':number(a.get('value')),
-                     'display_asof':stamp(a.get('asof')),'status':a.get('status','UNAVAILABLE')})
+                     'display_asof':stamp(a.get('asof')) if a.get('value') is not None else reason(a),
+                     'status':a.get('status','UNAVAILABLE')})
     for i,a in enumerate(rows):
         top=666-i*13
         if i%2==0:rect(28,top+2,539,13,'#FFFFFF')
@@ -139,9 +190,11 @@ def render(s,r,path):
         p(name,x+12,471,130,12,INK,True);p('EXP '+text(a.get('expiry')),x+135,469,118,7.5,MUTED)
         p('PCR '+number(a.get('pcr_current'),3),x+12,449,118,14,TEAL,True)
         p('Max pain '+number(a.get('max_pain')),x+132,446,120,8.2,INK,True)
-        p('Previous '+number(a.get('pcr_previous'),3)+' | '+text(a.get('pcr_direction') or 'WITHHELD')+' / shadow, not counted',x+12,425,239,6.7,MUTED,maxh=18)
+        p('Previous '+number(a.get('pcr_previous'),3)+' | direction '+text(a.get('pcr_direction') or 'N/A'),x+12,425,239,6.7,MUTED,maxh=18)
         p('Call wall '+number(a.get('call_walls'))+' | Put wall '+number(a.get('put_walls')),x+12,408,239,8,maxh=20)
-        p('OI change / C '+number(a.get('call_oi_change'),0)+' | P '+number(a.get('put_oi_change'),0),x+12,386,239,7.2,MUTED)
+        detail=('OI change / C '+number(a.get('call_oi_change'),0)+' | P '+number(a.get('put_oi_change'),0)
+                if a.get('status')!='UNAVAILABLE' else 'N/A: '+reason(a))
+        p(detail,x+12,386,239,7.2,MUTED,maxh=19)
     section('06','Positioning & flows',350)
     f=s.get('flows',[])
     for i,a in enumerate(f[:5]):
@@ -157,7 +210,7 @@ def render(s,r,path):
                 oi_delta=int(current['oi_raw'])-int(previous['oi_raw'])
                 detail='Close '+number(current['close'])+' ('+signed(price_delta)+') | OI '+number(current['oi_raw'],0)+' ('+signed(oi_delta,0)+')'
             except (KeyError,ValueError,TypeError,InvalidOperation):detail='Price / OI change N/A'
-            sub='Raw provider OI | '+text(a.get('expiry'))+' expiry | signal withheld'
+            sub='Raw provider OI | '+text(a.get('expiry'))+' expiry'
             status='OBSERVED' if len(obs)>1 else 'N/A'
         elif 'index-futures' in a['check']:
             detail='L '+number(v.get('long_contracts'),0)+' / S '+number(v.get('short_contracts'),0)+' / net '+signed(v.get('net_contracts'),0)+' / L:S '+number(v.get('long_divided_by_short'),3)
@@ -170,18 +223,21 @@ def render(s,r,path):
         else:detail='N/A';sub=text(a.get('reason'));status=a.get('status','N/A')
         p(text(status),190,top,53,6.8,MUTED)
         p(detail,247,top,312,7.1,maxh=10)
-        p(sub,247,top-10,312,6.2,MUTED,maxh=9)
+        p(sub if a.get('status')=='PASS' else reason(a),247,top-10,312,6.2,MUTED,maxh=9)
     if not f:p('N/A / Flow observations unavailable.',36,322,520,8.5,MUTED)
     section('07','On the calendar / selected events',200)
     for i,a in enumerate(s.get('calendar',[])[:4]):
         top=172-i*14;p(stamp(a.get('scheduled_IST')) if a.get('scheduled_IST') else text(a.get('date_IST')),28,top,140,7,MUTED)
         p(text(a.get('title')),171,top,396,8,maxh=14)
-    if not s.get('calendar'):p('N/A / Calendar coverage unavailable.',28,172,539,8.5,MUTED)
+    if not s.get('calendar'):p('Calendar N/A: '+text(s.get('calendar_note') or 'No whitelisted release was validated.'),28,172,539,8,MUTED,maxh=19)
     rect(28,112,539,44,'#E0EEEA',6);label('Data notes',39,104)
     bank=s.get('options',{}).get('BANKNIFTY',{})
     note='Bank Nifty: '+text(bank.get('reason','No comparison restriction recorded'))
     p(note,39,90,517,7,maxh=20)
-    p('OI units unverified. PCR/walls and futures remain outside the six-signal score.',28,61,539,7,AMBER)
+    india=s.get('today_india',[])
+    india_text='; '.join(text(x.get('title'))[:55] for x in india[:2]) or 'N/A'
+    if len(india)>2:india_text+='; +'+str(len(india)-2)+' more'
+    p('Today in India, 09:15-15:30: '+india_text+'. Corporate dates: '+text(s.get('india_corporate_events') or 'N/A: official source unavailable')+'.',28,61,539,7,AMBER,maxh=18)
     c.save()
 
 

@@ -11,6 +11,7 @@ import urllib.request
 import urllib.parse
 from integrated.adapters import flows, global_data, news, calendar, archive
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
+from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -97,6 +98,20 @@ def global_row(name, result, cutoff):
         return row
     row.update(value=price,asof=stamp,status='PROVISIONAL' if age<=dt.timedelta(hours=18) else 'PRIOR QUOTE',
                reason='Last observed quote; market-session completeness not verified')
+    try:
+        # Upstox documents net_change as LTP minus the previous session close.
+        # Its OHLC close can equal the latest price, so it is not this baseline.
+        current=Decimal(str(price))
+        raw_change=result.get('provider_net_change_raw')
+        raw_previous=result.get('previous_close_raw')
+        previous=(current-Decimal(str(raw_change)) if raw_change is not None
+                  else Decimal(str(raw_previous)))
+        change=current-previous
+        if current.is_finite() and change.is_finite() and previous.is_finite() and previous>0:
+            row['previous_close']=str(previous)
+            row['change_pct']=str(change*100/previous)
+    except (InvalidOperation,TypeError,ValueError):
+        row['change_reason']=result.get('previous_close_reason') or 'No validated previous daily close'
     return row
 
 def index_daily(api, key, sessions, cutoff):
@@ -180,7 +195,7 @@ def main():
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists():
         print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'MORNING_BRIEF','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['Cash: ₹ cr per user assumption; no rescaling. Futures and option OI use raw provider counts.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -201,6 +216,7 @@ def main():
                 compact['spot']={name:index_result(api,key,sessions,cutoff) for name,key in
                                  (('NIFTY',flows.INDICES['Nifty']),('BANKNIFTY',flows.INDICES['Bank Nifty']))}
                 compact['vix_daily']=index_result(api,flows.INDICES['India VIX'],sessions,cutoff)
+                compact['vix_flag']=vix_flag(compact['vix_daily'])
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
@@ -210,8 +226,11 @@ def main():
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
                         net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)}))
-                    # Withhold futures until source consistency is established. Keep observations for audit.
-                    compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
+                    signals=compact['score']['signals']
+                    signals['futures_build_up']=futures_point(results,dates)
+                    signals['pcr_direction'],signals['strike_walls']=option_points(
+                        compact['options'].get('NIFTY',{}),compact['spot'].get('NIFTY',{}))
+                    compact['score']=clean(score_summary(signals))
             quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
             compact['vix']=attempt(lambda:flows.quote(quotes,flows.INDICES['India VIX'],now))
             try:
@@ -228,13 +247,25 @@ def main():
                         r=attempt(lambda item=item:global_data.indicator_check(gapi,item,cutoff) if item['segment']=='GLOBAL_INDICATOR' else global_data.global_quote_check(gapi,item,now))
                         full.setdefault('global',[]).append(r)
                         compact['global'].append(global_row(name,r,cutoff))
-            news.MAX_PAGES=2
-            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=6),now));full['news']=n
+            news.MAX_PAGES=4
+            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
-            compact['news']=[{k:r.get(k) for k in ('title','url','published_IST')} for r in n.get('articles',[])[:6]]
-            compact['news_note']='Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.'
+            compact['news_requests_used']=n.get('http_attempts',0)
+            selected=select_news(n.get('articles',[]))
+            compact['news']=[{k:r.get(k) for k in ('title','url','source','published_IST')} for r in selected]
+            failure=next((row.get('reason') for row in n.get('queries',[]) if row.get('status')=='FAIL'),None)
+            compact['news_note']=(('News unavailable: '+str(n.get('reason') or failure)[:100])
+                if not selected and (n.get('reason') or failure) else
+                f'{len(selected)} shown of {n.get("unique_articles",0)} matched in the window; max 12 requests. Selected queries, not exhaustive.')
             c=attempt(lambda:calendar.run(now));full['calendar']=c
-            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in c.get('events',[])[:6]]
+            us_events,india_events=select_events(c.get('events',[]),str(day),
+                [(name,row.get('expiry')) for name,row in compact['options'].items()])
+            fields=('title','agency','date_IST','scheduled_IST','source')
+            compact['calendar']=[{k:r.get(k) for k in fields} for r in us_events[:6]]
+            compact['today_india']=[{k:r.get(k) for k in fields} for r in india_events[:4]]
+            compact['india_corporate_events']='N/A: official results, ex-date and IPO feed not validated'
+            compact['calendar_note']=(next((row.get('reason') for row in c.get('checks',[]) if row.get('status') in ('FAIL','BLOCKED')),None)
+                                      or 'No whitelisted release in the next seven days')
             compact['calendar_status']='PARTIAL'
     compact['collection_status']=compact.get('collection_status','PARTIAL' if compact['trading_day']=='OPEN' else compact['trading_day'])
     compact['timing']='ON_TIME_COLLECTION' if now<=cutoff+dt.timedelta(minutes=10) else 'LATE_COLLECTION'
