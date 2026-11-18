@@ -3,7 +3,8 @@ name: Test NSE MCP access
 "on":
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: test-nse-mcp-access
@@ -268,4 +269,40 @@ jobs:
           
           if __name__ == "__main__":
               main()
+          PY
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check dated NSE index fallback without delivery
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import os
+          from zoneinfo import ZoneInfo
+          from integrated.adapters import flows, nse_mcp
+
+          now = dt.datetime.now(ZoneInfo('Asia/Kolkata'))
+          cutoff = now.replace(hour=7, minute=45, second=0, microsecond=0)
+          if not cutoff <= now <= cutoff + dt.timedelta(minutes=25):
+              print('SKIPPED: run this check from 07:45 to 08:10 IST for morning freshness')
+              raise SystemExit(0)
+          try:
+              api = flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN', ''))
+              sessions, closes, _ = flows.completed_sessions(api, cutoff)
+              nse = sessions['NSE']
+          except Exception:
+              print('FAIL: completed Upstox NSE sessions unavailable; details suppressed')
+              raise SystemExit(1)
+          try:
+              rows = nse_mcp.fetch_indices(nse, cutoff, closes[('NSE', nse[0])])
+          except nse_mcp.CheckFailure as exc:
+              print('FAIL: ' + str(exc))
+              raise SystemExit(1)
+          missing = [name for name, row in rows.items() if row['status'] != 'PASS']
+          print('NSE MCP morning index check:', len(rows) - len(missing), 'of', len(rows),
+                'validated for', nse[0], '; missing:', ', '.join(missing) or 'none')
+          if missing:
+              raise SystemExit(1)
+          print('Source as of:', next(iter(rows.values()))['source_asof_IST'])
           PY
