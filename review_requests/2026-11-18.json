@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-18",
+  "snapshot_sha256": "6b007d56c791ba955031bb89c10bfb743b50daa7f67f28b14c23abfe2f16a65f",
+  "summary": "At the 07:45 IST report cutoff, the deterministic score is -1 from 3/6 available signals. The theoretical range is [-4, +2]. The computed bias is INSUFFICIENT DATA TO ASSIGN FINAL BIAS. Missing signals: futures_build_up, pcr_direction, strike_walls. Option levels and global data retain their source status and timestamps. Cash figures are shown in ₹ cr under the user-specified unit assumption; independent unit reconciliation remains pending. No DII-offset bonus is applied. This is a rules-based cloud summary; dated NSE MCP context was not available in GitHub Actions.",
+  "alerts": [
+    "Only 3/6 scoring signals available; INSUFFICIENT DATA TO ASSIGN FINAL BIAS.",
+    "Missing signals: futures_build_up, pcr_direction, strike_walls.",
+    "India VIX caution: UNKNOWN. Cash unit assumption: ₹ cr; verify before use."
+  ],
+  "mcp_context": []
+}
