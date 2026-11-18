@@ -114,22 +114,24 @@ def global_row(name, result, cutoff):
         row['change_reason']=result.get('previous_close_reason') or 'No validated previous daily close'
     return row
 
-def index_daily(api, key, sessions, cutoff):
-    """Two exact completed NSE sessions; daily bar starts are not quote times."""
+def index_daily(api, key, sessions, cutoff, exchange='NSE'):
+    """Two exact completed exchange sessions; daily bar starts are not quote times."""
     if len(sessions)<2 or not sessions[1]<sessions[0]<cutoff.date().isoformat():
-        raise flows.CheckFailure('Two completed NSE sessions are required')
+        raise flows.CheckFailure('Two completed '+exchange+' sessions are required')
     path=('/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'
           +sessions[0]+'/'+sessions[1])
     bars=flows.daily_bars(api.get(path,version='v3'),cutoff)
     if any(day not in bars for day in sessions[:2]):
-        raise flows.CheckFailure('Daily close missing for a required NSE session')
+        raise flows.CheckFailure('Daily close missing for a required '+exchange+' session')
     current=Decimal(bars[sessions[0]]['close']);previous=Decimal(bars[sessions[1]]['close'])
     return clean({'status':'PASS','latest_date':sessions[0],'previous_date':sessions[1],
                   'close':current,'previous_close':previous,'change':current-previous,
                   'change_pct':(current-previous)*100/previous,'unit':'index points'})
 
-def index_result(api,key,sessions,cutoff):
-    try:return index_daily(api,key,sessions,cutoff)
+def index_result(api,key,sessions,cutoff,exchange='NSE'):
+    if getattr(api,'auth_failed',False):
+        return {'status':'UNAVAILABLE','reason':'Earlier Upstox access was rejected'}
+    try:return index_daily(api,key,sessions,cutoff,exchange)
     except flows.CheckFailure as exc:return {'status':'UNAVAILABLE','reason':str(exc)[:160]}
     except Exception:return {'status':'UNAVAILABLE','reason':'Daily index request or schema failed'}
 
@@ -213,8 +215,13 @@ def main():
                 compact['completed_sessions']=cal['completed_sessions']
                 compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
                 sessions=cal['completed_sessions']['NSE']
-                compact['spot']={name:index_result(api,key,sessions,cutoff) for name,key in
-                                 (('NIFTY',flows.INDICES['Nifty']),('BANKNIFTY',flows.INDICES['Bank Nifty']))}
+                compact['spot']={name:index_result(api,flows.INDICES[source],sessions,cutoff) for name,source in
+                                 (('NIFTY','Nifty'),('BANKNIFTY','Bank Nifty'),
+                                  ('MIDCAP100','Midcap 100'),('SMALLCAP100','Smallcap 100'))}
+                compact['spot']['SENSEX']=index_result(api,flows.INDICES['Sensex'],
+                    cal['completed_sessions'].get('BSE',[]),cutoff,'BSE')
+                compact['sectors']={name:index_result(api,flows.INDICES[name],sessions,cutoff) for name in
+                                    ('PSU Bank','Realty','Auto','FMCG','Energy','IT')}
                 compact['vix_daily']=index_result(api,flows.INDICES['India VIX'],sessions,cutoff)
                 compact['vix_flag']=vix_flag(compact['vix_daily'])
                 dates=cal['completed_sessions']['NFO']

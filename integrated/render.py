@@ -105,19 +105,39 @@ def render(s,r,path):
     close_rows=[('Nifty 50',spot.get('NIFTY',{})),('Sensex',spot.get('SENSEX',{})),
                 ('Bank Nifty',spot.get('BANKNIFTY',{})),('Midcap 100',spot.get('MIDCAP100',{})),
                 ('Smallcap 100',spot.get('SMALLCAP100',{})),('India VIX',vd)]
+    def valid_close(name,row):
+        exchange='BSE' if name=='Sensex' else 'NSE'
+        return (row.get('status')=='PASS' and
+                row.get('latest_date') in s.get('completed_sessions',{}).get(exchange,[])[:1])
     for i,(name,row) in enumerate(close_rows):
         y=703-i*22
-        valid=row.get('status')=='PASS' and row.get('latest_date') in s.get('completed_sessions',{}).get('NSE',[])[:1]
+        valid=valid_close(name,row)
         p(name,36,y,112,9,INK)
         p(number(row.get('close')) if valid else 'N/A',150,y,69,9,INK,True)
         change=row.get('change_pct') if valid else None
         p((signed(change)+'%') if change is not None else 'N/A',222,y,52,8,change_color(change))
-    for i,name in enumerate(('PSU Bank','Realty','Auto','FMCG','Energy','IT')):
+    sector_names=('PSU Bank','Realty','Auto','FMCG','Energy','IT')
+    sector_rows=s.get('sectors',{})
+    def sector_change(row):
+        try:
+            change=Decimal(str(row['change_pct']))
+            if (row.get('status')=='PASS' and change.is_finite() and
+                    row.get('latest_date') in s.get('completed_sessions',{}).get('NSE',[])[:1]):
+                return change
+        except (KeyError,InvalidOperation,TypeError,ValueError):pass
+        return None
+    for i,name in enumerate(sector_names):
         y=703-i*22
         p(name,307,y,80,9,INK)
         rect(388,y-2,107,4,'#E8ECEC',2)
-        p('N/A',504,y,53,8,MUTED)
-    p('Sector feed not connected',307,568,249,7,MUTED)
+        row=sector_rows.get(name,{})
+        change=sector_change(row)
+        if change is not None:
+            rect(388,y-2,float(min(abs(change),Decimal('2')))*51,4,change_color(change),2)
+            p(signed(change)+'%',504,y,53,8,change_color(change))
+        else:p('N/A',504,y,53,8,MUTED)
+    p('Previous NSE close; bars capped at 2%.' if all(sector_change(sector_rows.get(n,{})) is not None for n in sector_names)
+      else 'Missing sector rows: daily close not validated.',307,568,249,7,MUTED)
     line(35,552,525)
     label('Gift Nifty and opening indication',35,536)
     gift,_=observed('GIFT NIFTY')
@@ -166,9 +186,12 @@ def render(s,r,path):
     line(35,145,525)
     missing_global=[name+': '+reason(markets.get(name,{})) for name in ('NIKKEI 225','GIFT NIFTY')
                     if observed(name)[0] is None and name in markets]
-    p('Uncollected: Sensex, Midcap, Smallcap, sectors, ADRs, US yield, gold, silver, Kospi.',35,132,525,7,MUTED)
-    p(text('; '.join(missing_global[:2])) if missing_global else 'Other N/A values lack a validated previous close or source.',35,120,525,7,MUTED,maxh=18)
-    p('Opening indication is not a forecast and does not alter the model score.',35,100,525,7,MUTED)
+    missing_indices=[name for name,row in close_rows if not valid_close(name,row)]
+    missing_sectors=[name for name in sector_names if sector_change(sector_rows.get(name,{})) is None]
+    p('Index N/A: '+(', '.join(missing_indices) or 'none')+'.',35,132,525,7,MUTED,maxh=10)
+    p('Sector N/A: '+(', '.join(missing_sectors) or 'none')+'.',35,120,525,7,MUTED,maxh=10)
+    p('Other feeds not connected: ADRs, US yield, gold, silver and Kospi.',35,108,525,7,MUTED)
+    p(text('; '.join(missing_global[:2])) if missing_global else 'Opening indication is not a forecast and does not alter the model score.',35,96,525,7,MUTED,maxh=18)
     line(35,42,525);p('NSE MORNING BRIEF  |  SAVED SOURCE TIMES',35,31,405,7,MUTED)
     p('01 / 03',523,31,38,7,MUTED,True)
     c.showPage()

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from integrated.collect import global_row, index_daily, option_summary
+from integrated.collect import global_row, index_daily, index_result, option_summary
 from integrated.adapters import flows, global_data
 from integrated.render import render
 
@@ -16,6 +16,74 @@ IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 
 
 class ReportEnrichmentTests(unittest.TestCase):
+    def test_only_published_index_candle_keys_are_allowed(self):
+        class Response:
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def read(self,limit):return b'{"status":"success","data":{"candles":[]}}'
+        class Opener:
+            def open(self,request,timeout):return Response()
+        api=flows.API('x'*20);api.opener=Opener()
+        for name in ('Sensex','Midcap 100','PSU Bank'):
+            key=flows.INDICES[name].replace('|','%7C').replace(' ','%20')
+            result=api.get('/historical-candle/'+key+'/days/1/2026-11-17/2026-11-16',version='v3')
+            self.assertEqual(result,{'candles':[]})
+        with self.assertRaisesRegex(flows.CheckFailure,'outside the read-only test allowlist'):
+            api.get('/historical-candle/US_EQ%7CAAPL/days/1/2026-11-17/2026-11-16',version='v3')
+
+    def test_bse_calendar_and_sensex_use_bse_sessions(self):
+        day=dt.date(2026,11,17)
+        start=int(dt.datetime(2026,11,17,9,15,tzinfo=IST).timestamp()*1000)
+        end=int(dt.datetime(2026,11,17,15,30,tzinfo=IST).timestamp()*1000)
+        sessions=flows.calendar_day([{'exchange':'NSE','start_time':start,'end_time':end},
+                                     {'exchange':'BSE','start_time':start,'end_time':end}],day)
+        self.assertIn('BSE',sessions)
+        class FakeAPI:
+            def get(self,path,version):
+                self.path=path;self.version=version
+                return {'candles':[['2026-11-17T00:00:00+05:30',200,203,199,202,0,0],
+                                   ['2026-11-16T00:00:00+05:30',197,201,196,200,0,0]]}
+        api=FakeAPI();cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        row=index_daily(api,flows.INDICES['Sensex'],['2026-11-17','2026-11-16'],cutoff,'BSE')
+        self.assertEqual((row['close'],row['change_pct']),('202','1'))
+        self.assertIn('BSE_INDEX%7CSENSEX',api.path)
+        with self.assertRaisesRegex(flows.CheckFailure,'Two completed BSE sessions'):
+            index_daily(api,flows.INDICES['Sensex'],['2026-11-17'],cutoff,'BSE')
+
+    def test_snapshot_displays_validated_indian_index_and_sector_closes(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        s['completed_sessions']={'NSE':['2026-10-27'],'BSE':['2026-10-27']}
+        s['spot']={'SENSEX':{'status':'PASS','latest_date':'2026-10-27','close':'200','change_pct':'1'},
+                   'MIDCAP100':{'status':'PASS','latest_date':'2026-10-27','close':'150','change_pct':'0.5'}}
+        s['sectors']={'PSU Bank':{'status':'PASS','latest_date':'2026-10-27','change_pct':'1.95'}}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'report.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+            self.assertIn('Sensex\n200\n+1%',page)
+            self.assertIn('Midcap 100\n150\n+0.5%',page)
+            self.assertIn('PSU Bank\n+1.95%',page)
+            self.assertIn('Sector N/A: Realty, Auto, FMCG, Energy, IT.',page)
+
+    def test_snapshot_withholds_stale_sector_close(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        s['completed_sessions']={'NSE':['2026-10-27']}
+        s['sectors']={'PSU Bank':{'status':'PASS','latest_date':'2026-10-26','change_pct':'1.95'}}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'report.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+            self.assertIn('PSU Bank\nN/A',page)
+
+    def test_rejected_upstox_access_skips_later_index_requests(self):
+        class RejectedAPI:
+            auth_failed=True
+            def get(self,*args,**kwargs):self.fail('unexpected request')
+        row=index_result(RejectedAPI(),flows.INDICES['Sensex'],[],
+                         dt.datetime(2026,11,18,7,45,tzinfo=IST),'BSE')
+        self.assertEqual(row['status'],'UNAVAILABLE')
+        self.assertIn('access was rejected',row['reason'])
+
     def test_new_bank_nifty_strike_keeps_current_levels_but_withholds_change(self):
         expiry = '2026-11-17'
         def row(strike, side, ident, oi):
