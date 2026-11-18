@@ -71,6 +71,38 @@ class ReportEnrichmentTests(unittest.TestCase):
         row=global_row('Oil (Brent)',result,cutoff)
         self.assertEqual((row['previous_close'],row['change_pct']),('80','1.25'))
 
+    def test_indicator_selects_last_completed_bar_at_report_cutoff(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        class FakeAPI:
+            auth_failed=False
+            last_response_at=dt.datetime(2026,11,18,7,55,tzinfo=IST)
+            def get(self,path,params,version):
+                if '/days/1/' in path:
+                    return {'candles':[['2026-11-17T00:00:00+05:30',78,81,77,80,0,0]]}
+                return {'candles':[
+                    ['2026-11-18T07:54:00+05:30',92,93,91,92,0,0],
+                    ['2026-11-18T07:44:00+05:30',90,91,89,90,0,0]]}
+        result=global_data.indicator_check(FakeAPI(),{'instrument_key':'GLOBAL_INDICATOR|BZUSD'},cutoff)
+        row=global_row('Oil (Brent)',result,cutoff)
+        self.assertEqual(result['bar_start_IST'],'2026-11-18T07:44:00+05:30')
+        self.assertEqual((row['status'],row['value'],row['change_pct']),('PROVISIONAL',90,'12.5'))
+
+    def test_indicator_ignores_invalid_after_cutoff_but_rejects_invalid_before(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        observed=cutoff+dt.timedelta(minutes=10)
+        good=['2026-11-18T07:44:00+05:30',90,91,89,90,0,0]
+        bad_later=['2026-11-18T07:54:00+05:30',92,93,91,float('nan'),0,0]
+        result=global_data.indicator_candles({'candles':[bad_later,good]},
+            {'instrument_key':'GLOBAL_INDICATOR|BZUSD'},observed,cutoff)
+        self.assertEqual(result['last_closed_minute_price'],90)
+        bad_earlier=['2026-11-18T07:43:00+05:30',90,91,89,float('nan'),0,0]
+        with self.assertRaises(global_data.CheckFailure):
+            global_data.indicator_candles({'candles':[bad_earlier,good]},
+                {'instrument_key':'GLOBAL_INDICATOR|BZUSD'},observed,cutoff)
+        with self.assertRaises(global_data.CheckFailure):
+            global_data.indicator_candles({'candles':[bad_later]},
+                {'instrument_key':'GLOBAL_INDICATOR|BZUSD'},observed,cutoff)
+
     def test_indicator_invalid_completed_baseline_keeps_change_unavailable(self):
         cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
         class FakeAPI:
