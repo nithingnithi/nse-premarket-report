@@ -13,7 +13,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
-def send(pdf, filename):
+def send(pdf, filename, caption=None):
     if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
         stop("Repeated attempts are blocked. Check the channel before starting another delivery.")
     owner_text = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -76,7 +76,7 @@ def send(pdf, filename):
     chunks = []
     for name, value in [
         ("chat_id", chat_text),
-        ("caption", "NSE Morning Report. Check coverage, timestamps and unavailable data in the PDF."),
+        ("caption", caption or "NSE Morning Report. See the PDF for source dates and missing data."),
     ]:
         chunks.append((
             "--" + boundary + "\r\n"

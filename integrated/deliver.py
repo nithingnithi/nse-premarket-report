@@ -7,6 +7,7 @@ from pathlib import Path
 from integrated.review import IST,load,validate
 from integrated.telegram import send
 from integrated.render import render
+from integrated.brief_v3 import caption
 
 def persist(path):
     for args in (['git','add','--',str(path)],['git','commit','-m','Record report delivery state'],['git','push','origin','HEAD:main']):
@@ -39,7 +40,7 @@ def main():
     reserve(ledger,{'report_date':day,'status':'RESERVED_UNCERTAIN_UNTIL_VERIFIED','run_id':os.environ.get('GITHUB_RUN_ID')})
     # Recheck the live window after the remote reservation, immediately before sendDocument.
     validate(s,r,dt.datetime.now(IST),live=True)
-    result=send(pdf,output.name)
+    result=send(pdf,output.name,caption(s,r))
     ledger.write_text(json.dumps({'report_date':day,**result},indent=2));persist(ledger)
 if __name__=='__main__':
     try:main()

@@ -9,8 +9,9 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
-from integrated.adapters import flows, global_data, news, calendar, archive
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
+from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
 
 def clean(x):
@@ -97,26 +98,67 @@ def global_row(name, result, cutoff):
         return row
     row.update(value=price,asof=stamp,status='PROVISIONAL' if age<=dt.timedelta(hours=18) else 'PRIOR QUOTE',
                reason='Last observed quote; market-session completeness not verified')
+    try:
+        # Upstox documents net_change as LTP minus the previous session close.
+        # Its OHLC close can equal the latest price, so it is not this baseline.
+        current=Decimal(str(price))
+        raw_change=result.get('provider_net_change_raw')
+        raw_previous=result.get('previous_close_raw')
+        previous=(current-Decimal(str(raw_change)) if raw_change is not None
+                  else Decimal(str(raw_previous)))
+        change=current-previous
+        if current.is_finite() and change.is_finite() and previous.is_finite() and previous>0:
+            row['previous_close']=str(previous)
+            row['change_pct']=str(change*100/previous)
+    except (InvalidOperation,TypeError,ValueError):
+        row['change_reason']=result.get('previous_close_reason') or 'No validated previous daily close'
     return row
 
-def index_daily(api, key, sessions, cutoff):
-    """Two exact completed NSE sessions; daily bar starts are not quote times."""
+def index_daily(api, key, sessions, cutoff, exchange='NSE'):
+    """Two exact completed exchange sessions; daily bar starts are not quote times."""
     if len(sessions)<2 or not sessions[1]<sessions[0]<cutoff.date().isoformat():
-        raise flows.CheckFailure('Two completed NSE sessions are required')
+        raise flows.CheckFailure('Two completed '+exchange+' sessions are required')
     path=('/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'
           +sessions[0]+'/'+sessions[1])
     bars=flows.daily_bars(api.get(path,version='v3'),cutoff)
     if any(day not in bars for day in sessions[:2]):
-        raise flows.CheckFailure('Daily close missing for a required NSE session')
+        raise flows.CheckFailure('Daily close missing for a required '+exchange+' session')
     current=Decimal(bars[sessions[0]]['close']);previous=Decimal(bars[sessions[1]]['close'])
     return clean({'status':'PASS','latest_date':sessions[0],'previous_date':sessions[1],
                   'close':current,'previous_close':previous,'change':current-previous,
                   'change_pct':(current-previous)*100/previous,'unit':'index points'})
 
-def index_result(api,key,sessions,cutoff):
-    try:return index_daily(api,key,sessions,cutoff)
+def index_result(api,key,sessions,cutoff,exchange='NSE'):
+    if getattr(api,'auth_failed',False):
+        return {'status':'UNAVAILABLE','reason':'Earlier Upstox access was rejected'}
+    try:return index_daily(api,key,sessions,cutoff,exchange)
     except flows.CheckFailure as exc:return {'status':'UNAVAILABLE','reason':str(exc)[:160]}
     except Exception:return {'status':'UNAVAILABLE','reason':'Daily index request or schema failed'}
+
+def supplement_nse_indices(spot,sectors,sessions,cutoff,session_close,fetch=nse_mcp.fetch_indices):
+    """Use only exact-session MCP closes where the Upstox index row is missing."""
+    targets={**{name:spot for name in ('NIFTY','BANKNIFTY','MIDCAP100','SMALLCAP100')},
+             **{name:sectors for name in ('PSU Bank','Realty','Auto','FMCG','Energy','IT')}}
+    missing=[name for name,group in targets.items() if group.get(name,{}).get('status')!='PASS']
+    if not missing:return {'status':'NOT_NEEDED','used':[]}
+    try:rows=fetch(sessions,cutoff,session_close)
+    except Exception as exc:
+        why=str(exc) if isinstance(exc,nse_mcp.CheckFailure) else 'NSE MCP request or validation failed'
+        for name in missing:
+            row=targets[name].setdefault(name,{'status':'UNAVAILABLE'})
+            row['mcp_fallback_reason']=why
+        return {'status':'UNAVAILABLE','reason':why,'used':[]}
+    used=[]
+    for name in missing:
+        candidate=rows.get(name,{'status':'UNAVAILABLE','reason':'NSE MCP index was not returned'})
+        if candidate.get('status')=='PASS':
+            candidate['upstox_reason']=targets[name].get(name,{}).get('reason')
+            targets[name][name]=candidate
+            used.append(name)
+        else:
+            targets[name].setdefault(name,{'status':'UNAVAILABLE'})['mcp_fallback_reason']=candidate.get('reason')
+    return {'status':'PASS' if len(used)==len(missing) else 'PARTIAL','used':used,
+            'unfilled':[name for name in missing if name not in used]}
 
 _OPTION_FAILURES={'Expiry changed','Duplicate','Unpaired',
                   'Multiple lot sizes in selected option expiry',
@@ -180,7 +222,7 @@ def main():
     day=now.date();target=Path('handoff')/(str(day)+'.json')
     if target.exists():
         print('Snapshot already exists; no repeat provider requests');return
-    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'PARTIAL_TRIAL','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['OI units/calendar pending. Cash: ₹ cr per user assumption; no rescaling; unit reconciliation pending.','Draft trial mapping retained; no added MCP/VIX points.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
+    compact={'schema_version':1,'report_date':str(day),'cutoff_IST':cutoff.isoformat(),'collected_at_IST':now.isoformat(),'mode':'MORNING_BRIEF','source_run':os.environ.get('GITHUB_RUN_ID'),'options':{},'global':[],'calendar':[],'news':[],'vix_flag':'UNKNOWN','score':clean(score_summary({})),'limitations':['Cash: ₹ cr per user assumption; no rescaling. Futures and option OI use raw provider counts.','PCR and walls are correlated; no DII-offset bonus.','Provider redistribution rights remain unverified.']}
     full={}
     api=attempt(lambda:flows.API(os.environ.get('UPSTOX_ANALYTICS_TOKEN','')))
     if isinstance(api,dict):
@@ -196,11 +238,20 @@ def main():
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
+                compact['latest_nse_close_IST']=cal['latest_nse_close_IST']
                 compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
                 sessions=cal['completed_sessions']['NSE']
-                compact['spot']={name:index_result(api,key,sessions,cutoff) for name,key in
-                                 (('NIFTY',flows.INDICES['Nifty']),('BANKNIFTY',flows.INDICES['Bank Nifty']))}
+                compact['spot']={name:index_result(api,flows.INDICES[source],sessions,cutoff) for name,source in
+                                 (('NIFTY','Nifty'),('BANKNIFTY','Bank Nifty'),
+                                  ('MIDCAP100','Midcap 100'),('SMALLCAP100','Smallcap 100'))}
+                compact['spot']['SENSEX']=index_result(api,flows.INDICES['Sensex'],
+                    cal['completed_sessions'].get('BSE',[]),cutoff,'BSE')
+                compact['sectors']={name:index_result(api,flows.INDICES[name],sessions,cutoff) for name in
+                                    ('PSU Bank','Realty','Auto','FMCG','Energy','IT')}
+                compact['cm_market_fallback']=supplement_nse_indices(
+                    compact['spot'],compact['sectors'],sessions,cutoff,cal['latest_nse_close_IST'])
                 compact['vix_daily']=index_result(api,flows.INDICES['India VIX'],sessions,cutoff)
+                compact['vix_flag']=vix_flag(compact['vix_daily'])
                 dates=cal['completed_sessions']['NFO']
                 if len(dates)==2 and all(d<str(day) for d in dates):
                     for d in dates:full[d]=attempt(lambda d=d:get_archive(dt.date.fromisoformat(d),day))
@@ -210,8 +261,11 @@ def main():
                     fii=next((r for r in results if r.get('check')=='FII index-futures positions' and r.get('status')=='PASS'),None)
                     if fii and fii['latest_date']==dates[0]:
                         net=fii['observations'][0]['net_contracts'];compact['score']=clean(score_summary({**compact['score']['signals'],'fii_futures':(net>0)-(net<0)}))
-                    # Withhold futures until source consistency is established. Keep observations for audit.
-                    compact['futures_validation']='WITHHELD: archive/provider OI and close semantics require reconciliation'
+                    signals=compact['score']['signals']
+                    signals['futures_build_up']=futures_point(results,dates)
+                    signals['pcr_direction'],signals['strike_walls']=option_points(
+                        compact['options'].get('NIFTY',{}),compact['spot'].get('NIFTY',{}))
+                    compact['score']=clean(score_summary(signals))
             quotes=attempt(lambda:api.get('/market-quote/quotes',{'instrument_key':flows.INDICES['India VIX']}))
             compact['vix']=attempt(lambda:flows.quote(quotes,flows.INDICES['India VIX'],now))
             try:
@@ -228,13 +282,25 @@ def main():
                         r=attempt(lambda item=item:global_data.indicator_check(gapi,item,cutoff) if item['segment']=='GLOBAL_INDICATOR' else global_data.global_quote_check(gapi,item,now))
                         full.setdefault('global',[]).append(r)
                         compact['global'].append(global_row(name,r,cutoff))
-            news.MAX_PAGES=2
-            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=6),now));full['news']=n
+            news.MAX_PAGES=4
+            n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
-            compact['news']=[{k:r.get(k) for k in ('title','url','published_IST')} for r in n.get('articles',[])[:6]]
-            compact['news_note']='Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.'
+            compact['news_requests_used']=n.get('http_attempts',0)
+            selected=select_news(n.get('articles',[]))
+            compact['news']=[{k:r.get(k) for k in ('title','url','source','published_IST')} for r in selected]
+            failure=next((row.get('reason') for row in n.get('queries',[]) if row.get('status')=='FAIL'),None)
+            compact['news_note']=(('News unavailable: '+str(n.get('reason') or failure)[:100])
+                if not selected and (n.get('reason') or failure) else
+                f'{len(selected)} shown of {n.get("unique_articles",0)} matched in the window; max 12 requests. Selected queries, not exhaustive.')
             c=attempt(lambda:calendar.run(now));full['calendar']=c
-            compact['calendar']= [{k:r.get(k) for k in ('title','agency','date_IST','scheduled_IST','source')} for r in c.get('events',[])[:6]]
+            us_events,india_events=select_events(c.get('events',[]),str(day),
+                [(name,row.get('expiry')) for name,row in compact['options'].items()])
+            fields=('title','agency','date_IST','scheduled_IST','source')
+            compact['calendar']=[{k:r.get(k) for k in fields} for r in us_events[:6]]
+            compact['today_india']=[{k:r.get(k) for k in fields} for r in india_events[:4]]
+            compact['india_corporate_events']='N/A: official results, ex-date and IPO feed not validated'
+            compact['calendar_note']=(next((row.get('reason') for row in c.get('checks',[]) if row.get('status') in ('FAIL','BLOCKED')),None)
+                                      or 'No whitelisted release in the next seven days')
             compact['calendar_status']='PARTIAL'
     compact['collection_status']=compact.get('collection_status','PARTIAL' if compact['trading_day']=='OPEN' else compact['trading_day'])
     compact['timing']='ON_TIME_COLLECTION' if now<=cutoff+dt.timedelta(minutes=10) else 'LATE_COLLECTION'

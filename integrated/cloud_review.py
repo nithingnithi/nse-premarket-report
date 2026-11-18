@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 from integrated.collect import digest
+from integrated.brief_v3 import caption
 from integrated.review import IST,validate
 
 
@@ -13,22 +14,18 @@ def make_review(snapshot):
     n=score['available']
     missing=score['missing']
     bias=score['bias']
-    summary=(
-        f"At the 07:45 IST report cutoff, the deterministic score is {score['score']:+d} "
-        f"from {n}/6 available signals. The theoretical range is "
-        f"[{score['score_range'][0]:+d}, {score['score_range'][1]:+d}]. "
-        f"The computed bias is {bias}. "
-        f"Missing signals: {', '.join(missing) if missing else 'none'}. "
-        "Option levels and global data retain their source status and timestamps. "
-        "Cash figures are shown in ₹ cr under the user-specified unit assumption; "
-        "independent unit reconciliation remains pending. No DII-offset bonus is applied. "
-        "This is a rules-based cloud summary; dated NSE MCP context was not available in GitHub Actions."
-    )
-    alerts=[
-        (f"Only {n}/6 scoring signals available; {bias}." if missing else f"All six signals available; computed bias: {bias}."),
-        ("Missing signals: "+', '.join(missing)+"." if missing else "No scoring signals missing; check source timestamps."),
-        f"India VIX caution: {snapshot.get('vix_flag','UNKNOWN')}. Cash unit assumption: ₹ cr; verify before use."
-    ]
+    names={'futures_build_up':'futures build-up','pcr_direction':'PCR direction',
+           'strike_walls':'strike walls','fii_futures':'FII futures',
+           'fii_cash':'FII cash','dii_cash':'DII cash'}
+    summary=(f"At 07:45 IST the score is {score['score']:+d} from {n}/6 available signals. "
+             f"Possible range: {score['score_range'][0]:+d} to {score['score_range'][1]:+d}. "
+             f"Bias: {bias}. Missing: {', '.join(names[x] for x in missing) if missing else 'none'}. "
+             "India VIX caution is separate from the score. Prices retain their source times; unavailable fields are N/A.")
+    first=caption(snapshot,{'alerts':['N/A']}).splitlines()[2]
+    option=snapshot.get('options',{}).get('NIFTY',{})
+    def wall(key):return ', '.join(str(x) for x in option.get(key,[])) or 'N/A'
+    levels=f"Nifty put wall {wall('put_walls')}; call wall {wall('call_walls')}."
+    alerts=[first,levels,f"India VIX: {snapshot.get('vix_flag','UNKNOWN')}; {n}/6 score signals available."]
     return {'schema_version':1,'report_date':snapshot['report_date'],
             'snapshot_sha256':digest(snapshot),'summary':summary,
             'alerts':alerts,'mcp_context':[]}

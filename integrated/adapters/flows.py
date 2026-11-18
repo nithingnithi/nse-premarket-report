@@ -19,8 +19,15 @@ import urllib.request
 from zoneinfo import ZoneInfo
 
 IST = ZoneInfo("Asia/Kolkata")
+# Exact keys inspected in Upstox's published NSE/BSE BOD instrument files.
+# https://upstox.com/developer/api-documentation/instruments/
 INDICES = {"Nifty": "NSE_INDEX|Nifty 50", "Bank Nifty": "NSE_INDEX|Nifty Bank",
-           "India VIX": "NSE_INDEX|India VIX"}
+           "India VIX": "NSE_INDEX|India VIX", "Sensex": "BSE_INDEX|SENSEX",
+           "Midcap 100": "NSE_INDEX|NIFTY MIDCAP 100",
+           "Smallcap 100": "NSE_INDEX|NIFTY SMLCAP 100",
+           "PSU Bank": "NSE_INDEX|Nifty PSU Bank", "Realty": "NSE_INDEX|Nifty Realty",
+           "Auto": "NSE_INDEX|Nifty Auto", "FMCG": "NSE_INDEX|Nifty FMCG",
+           "Energy": "NSE_INDEX|Nifty Energy", "IT": "NSE_INDEX|Nifty IT"}
 PATHS = {"/market-quote/quotes", "/instruments/search", "/market/fii", "/market/dii"}
 CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-data report)"
 
@@ -89,8 +96,10 @@ class API:
     def get(self, path, params=None, version="v2", envelope=False):
         allowed = (version == "v2" and (path in PATHS or re.fullmatch(r"/market/timings/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)))
         if version == "v3":
+            index_path = re.fullmatch(r"/historical-candle/([^/]+)/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+            index_keys = {urllib.parse.quote(key, safe="") for key in INDICES.values()}
             allowed = bool(re.fullmatch(r"/historical-candle/NSE_FO%7C[0-9]+/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
-                           or re.fullmatch(r"/historical-candle/NSE_INDEX%7C(?:Nifty%2050|Nifty%20Bank|India%20VIX)/days/1/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}", path)
+                           or (index_path and index_path.group(1) in index_keys)
                            or re.fullmatch(r"/historical-candle/intraday/NSE_FO%7C[0-9]+/days/1", path))
         if not allowed:
             raise CheckFailure("Request path is outside the read-only test allowlist.")
@@ -204,7 +213,7 @@ def calendar_day(data, date):
         if not isinstance(row, dict):
             raise CheckFailure("Invalid market-timing row.")
         exchange = row.get("exchange")
-        if exchange not in ("NSE", "NFO"):
+        if exchange not in ("NSE", "NFO", "BSE"):
             continue
         if exchange in sessions:
             raise CheckFailure("Ambiguous duplicate market-timing rows.")
@@ -216,7 +225,7 @@ def calendar_day(data, date):
 
 
 def completed_sessions(api, now):
-    found = {"NSE": [], "NFO": []}
+    found = {"NSE": [], "NFO": [], "BSE": []}
     closes = {}
     checked = []
     # Includes weekends: the provider can publish special trading sessions.
@@ -229,7 +238,8 @@ def completed_sessions(api, now):
                 found[exchange].append(day.isoformat())
                 closes[(exchange, day.isoformat())] = end.isoformat(timespec="seconds")
         if len(found["NSE"]) >= 5 and len(found["NFO"]) >= 2:
-            return {"NSE": found["NSE"][:5], "NFO": found["NFO"][:2]}, closes, checked
+            return {"NSE": found["NSE"][:5], "NFO": found["NFO"][:2],
+                    "BSE": found["BSE"][:2]}, closes, checked
     raise CheckFailure("Not enough completed cash/derivatives sessions within the bounded calendar search.")
 
 
@@ -471,6 +481,7 @@ def run_checks(api, now, observed_now=None):
     try:
         dates, closes, checked = completed_sessions(api, now)
         results.append({"check": "Provider session calendar", "status": "PASS", "completed_sessions": dates,
+                        "latest_nse_close_IST": closes[("NSE", dates["NSE"][0])],
                         "calendar_dates_checked": checked,
                         "scope": "Provider timings only; independent NSE-calendar reconciliation remains pending."})
     except CheckFailure as exc:
