@@ -1,0 +1,439 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-18",
+  "cutoff_IST": "2026-11-18T07:45:00+05:30",
+  "collected_at_IST": "2026-11-18T07:45:52.785368+05:30",
+  "mode": "PARTIAL_TRIAL",
+  "source_run": "44221943633",
+  "options": {
+    "NIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-23",
+      "strikes": 158,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "1.063424958283451272305348015",
+      "pcr_current": "1.081813178809018954047360839",
+      "pcr_direction": "UP",
+      "call_walls": [
+        "26000.00"
+      ],
+      "put_walls": [
+        "25000.00"
+      ],
+      "max_pain": [
+        "25000.00"
+      ],
+      "call_oi_change": 29796650,
+      "put_oi_change": 34049470
+    },
+    "BANKNIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-23",
+      "strikes": 190,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "1.238954425453747154991734700",
+      "pcr_current": "1.337543229631377522803860987",
+      "pcr_direction": "UP",
+      "call_walls": [
+        "58000.00"
+      ],
+      "put_walls": [
+        "57000.00"
+      ],
+      "max_pain": [
+        "60000.00"
+      ],
+      "call_oi_change": 285030,
+      "put_oi_change": 1957530
+    }
+  },
+  "global": [
+    {
+      "name": "HANG SENG",
+      "value": 23374.0,
+      "asof": "2026-11-18T07:44:58+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "DOW JONES",
+      "value": 50652.56,
+      "asof": "2026-11-18T01:29:56+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "USD INR",
+      "value": 93.46,
+      "asof": "2026-11-18T04:52:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "Oil (Brent)",
+      "value": 92.79,
+      "asof": "2026-11-18T07:43:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "S&P",
+      "value": 7328.13,
+      "asof": "2026-11-18T01:29:56+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "GIFT NIFTY",
+      "value": 25266.5,
+      "asof": "2026-11-18T07:44:46+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "US Tech 100",
+      "value": 24201.72,
+      "asof": "2026-11-18T01:29:56+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "Oil (WTI)",
+      "value": 84.02,
+      "asof": "2026-11-18T07:44:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified"
+    },
+    {
+      "name": "NIKKEI 225",
+      "value": null,
+      "asof": null,
+      "status": "AFTER CUTOFF",
+      "reason": "Last trade was after 07:45 IST"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Employer-Reported Workplace Injuries and Illnesses (Annual)",
+      "agency": "BLS",
+      "date_IST": "2026-11-18",
+      "scheduled_IST": "2026-11-18T20:30:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    },
+    {
+      "title": "Outdoor Recreation Economic Statistics",
+      "agency": "BEA",
+      "date_IST": "2026-11-18",
+      "scheduled_IST": "2026-11-18T20:30:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    },
+    {
+      "title": "Activities of U.S. Multinational Enterprises",
+      "agency": "BEA",
+      "date_IST": "2026-11-20",
+      "scheduled_IST": "2026-11-20T19:00:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    },
+    {
+      "title": "State Employment and Unemployment (Monthly)",
+      "agency": "BLS",
+      "date_IST": "2026-11-20",
+      "scheduled_IST": "2026-11-20T20:30:00+05:30",
+      "source": "https://www.bls.gov/schedule/news_release/bls.ics"
+    }
+  ],
+  "news": [
+    {
+      "title": "Kulgam encounter: Fresh gunfight in Jammu and Kashmir as forces hunt escaped terrorist Lateef Bhat",
+      "url": "https://www.livemint.com/news/india/kulgam-encounter-fresh-gunfight-in-jammu-and-kashmir-as-forces-hunt-escaped-terrorist-lateef-bhat-11794966976143.html",
+      "published_IST": "2026-11-18T07:33:24.000000+05:30"
+    },
+    {
+      "title": "\"Sort Of Run Out Of Options\": Ex-CIA Vets Who Warned Trump Iran Could Strike First Say He Isn't Being Told What His Spies Know",
+      "url": "https://www.zerohedge.com/geopolitical/sort-run-out-options-ex-cia-vets-who-warned-trump-iran-could-strike-first-say-he-isnt",
+      "published_IST": "2026-11-18T07:00:00.000000+05:30"
+    },
+    {
+      "title": "Service Corporation International: A Great Business At Just An Okay Price That's Worth Buying",
+      "url": "https://seekingalpha.com/article/4969358-service-corporation-international-stock-great-business-okay-price-worth-buying",
+      "published_IST": "2026-11-18T06:28:40.000000+05:30"
+    },
+    {
+      "title": "Oil Indicators Found in East Baghdad's Hartha Reservoir",
+      "url": "https://www.iraq-businessnews.com/2026/11/18/oil-indicators-found-in-east-baghdads-hartha-reservoir/",
+      "published_IST": "2026-11-18T06:25:29.000000+05:30"
+    },
+    {
+      "title": "Australia Wage Price Index Climbs 1.1% In Q3",
+      "url": "https://www.rttnews.com/3715639/australia-wage-price-index-climbs-1-1-in-q3.aspx?type=alleco",
+      "published_IST": "2026-11-18T06:08:53.000000+05:30"
+    },
+    {
+      "title": "PingPong Hits $300 Billion in Annualised Transaction Volume as APAC Surges, and Launches \"Currentz\" for Banks",
+      "url": "https://www.manilatimes.net/2026/11/18/tmt-newswire/pr-newswire/pingpong-hits-300-billion-in-annualised-transaction-volume-as-apac-surges-and-launches-currentz-for-banks/2472646",
+      "published_IST": "2026-11-18T05:49:37.000000+05:30"
+    }
+  ],
+  "vix_flag": "UNKNOWN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": -1,
+      "fii_cash": 1,
+      "dii_cash": -1
+    },
+    "score": -1,
+    "available": 3,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls"
+    ],
+    "missing_count": 3,
+    "score_range": [
+      -4,
+      2
+    ],
+    "possible_categories": [
+      "BEARISH",
+      "NEUTRAL"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "limitations": [
+    "OI units/calendar pending. Cash: \u20b9 cr per user assumption; no rescaling; unit reconciliation pending.",
+    "Draft trial mapping retained; no added MCP/VIX points.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "OPEN",
+  "flows": [
+    {
+      "check": "NIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61471",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-11-17",
+          "bar_start_IST": "2026-11-17T00:00:00+05:30",
+          "close": "25415.3",
+          "volume": 3880760,
+          "oi_raw": 11393265
+        },
+        {
+          "date": "2026-11-16",
+          "bar_start_IST": "2026-11-16T00:00:00+05:30",
+          "close": "25293.6",
+          "volume": 2653430,
+          "oi_raw": 11472695
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "BANKNIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61466",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-11-17",
+          "bar_start_IST": "2026-11-17T00:00:00+05:30",
+          "close": "62316.8",
+          "volume": 793620,
+          "oi_raw": 1892460
+        },
+        {
+          "date": "2026-11-16",
+          "bar_start_IST": "2026-11-16T00:00:00+05:30",
+          "close": "61439.2",
+          "volume": 619080,
+          "oi_raw": 1980840
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "FII index-futures positions",
+      "status": "PASS",
+      "scope": "Aggregate NSE index futures; not Nifty-only or Bank-Nifty-only.",
+      "observations": [
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "long_contracts": 65568,
+          "short_contracts": 130691,
+          "net_contracts": -65123,
+          "long_divided_by_short": "0.5017024890772891782907774828",
+          "ratio_note": "long / short"
+        },
+        {
+          "date": "2026-11-16",
+          "provider_time_stamp_ms": 1794767400000,
+          "long_contracts": 61039,
+          "short_contracts": 117726,
+          "net_contracts": -56687,
+          "long_divided_by_short": "0.5184835975060734247320048248",
+          "ratio_note": "long / short"
+        }
+      ]
+    },
+    {
+      "check": "FII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "buy_raw": "19930.98",
+          "sell_raw": "15735.6",
+          "net_raw": "4195.38"
+        },
+        {
+          "date": "2026-11-16",
+          "provider_time_stamp_ms": 1794767400000,
+          "buy_raw": "15636.88",
+          "sell_raw": "10772.2",
+          "net_raw": "4864.68"
+        },
+        {
+          "date": "2026-11-13",
+          "provider_time_stamp_ms": 1794508200000,
+          "buy_raw": "18339.57",
+          "sell_raw": "12603.02",
+          "net_raw": "5736.55"
+        },
+        {
+          "date": "2026-11-12",
+          "provider_time_stamp_ms": 1794421800000,
+          "buy_raw": "20273.32",
+          "sell_raw": "12442.72",
+          "net_raw": "7830.60"
+        },
+        {
+          "date": "2026-11-11",
+          "provider_time_stamp_ms": 1794335400000,
+          "buy_raw": "30087.21",
+          "sell_raw": "17523.88",
+          "net_raw": "12563.33"
+        }
+      ],
+      "net_sum_last_3_raw": "14796.61",
+      "net_sum_last_5_raw": "35190.54",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    },
+    {
+      "check": "DII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "buy_raw": "14903.8",
+          "sell_raw": "14706.87",
+          "net_raw": "196.93"
+        },
+        {
+          "date": "2026-11-16",
+          "provider_time_stamp_ms": 1794767400000,
+          "buy_raw": "11752.03",
+          "sell_raw": "15271.08",
+          "net_raw": "-3519.05"
+        },
+        {
+          "date": "2026-11-13",
+          "provider_time_stamp_ms": 1794508200000,
+          "buy_raw": "11745.95",
+          "sell_raw": "13999.53",
+          "net_raw": "-2253.58"
+        },
+        {
+          "date": "2026-11-12",
+          "provider_time_stamp_ms": 1794421800000,
+          "buy_raw": "15855.13",
+          "sell_raw": "22186.3",
+          "net_raw": "-6331.17"
+        },
+        {
+          "date": "2026-11-11",
+          "provider_time_stamp_ms": 1794335400000,
+          "buy_raw": "19704.39",
+          "sell_raw": "28138.92",
+          "net_raw": "-8434.53"
+        }
+      ],
+      "net_sum_last_3_raw": "-5575.70",
+      "net_sum_last_5_raw": "-20341.40",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    }
+  ],
+  "completed_sessions": {
+    "NSE": [
+      "2026-11-17",
+      "2026-11-16",
+      "2026-11-13",
+      "2026-11-12",
+      "2026-11-11"
+    ],
+    "NFO": [
+      "2026-11-17",
+      "2026-11-16"
+    ]
+  },
+  "spot": {
+    "NIFTY": {
+      "status": "PASS",
+      "latest_date": "2026-11-17",
+      "previous_date": "2026-11-16",
+      "close": "25387.4",
+      "previous_close": "25291.1",
+      "change": "96.3",
+      "change_pct": "0.3807663565443970408562695968",
+      "unit": "index points"
+    },
+    "BANKNIFTY": {
+      "status": "PASS",
+      "latest_date": "2026-11-17",
+      "previous_date": "2026-11-16",
+      "close": "62273.25",
+      "previous_close": "61575.9",
+      "change": "697.35",
+      "change_pct": "1.132504762415165673583333739",
+      "unit": "index points"
+    }
+  },
+  "vix_daily": {
+    "status": "PASS",
+    "latest_date": "2026-11-17",
+    "previous_date": "2026-11-16",
+    "close": "15.52",
+    "previous_close": "15.68",
+    "change": "-0.16",
+    "change_pct": "-1.020408163265306122448979592",
+    "unit": "index points"
+  },
+  "archive_sources": [
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261117_F_0000.csv.zip",
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261116_F_0000.csv.zip"
+  ],
+  "futures_validation": "WITHHELD: archive/provider OI and close semantics require reconciliation",
+  "vix": {
+    "status": "PASS",
+    "last_price": 15.52,
+    "quote_time_IST": "2026-11-18T07:46:00+05:30",
+    "last_trade_time_IST": "2026-11-17T16:00:00+05:30"
+  },
+  "news_status": "PARTIAL",
+  "news_note": "Selected-query sample: max 6 HTTP attempts / 6 displayed articles; not exhaustive. Paraphrased syndication may remain.",
+  "calendar_status": "PARTIAL",
+  "collection_status": "PARTIAL",
+  "timing": "ON_TIME_COLLECTION"
+}
