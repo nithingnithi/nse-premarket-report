@@ -65,6 +65,21 @@ class ReportEnrichmentTests(unittest.TestCase):
             self.assertIn('PSU Bank\n+1.95%',page)
             self.assertIn('Sector N/A: Realty, Auto, FMCG, Energy, IT.',page)
 
+    def test_pdf_renders_dated_extra_data_without_changing_score(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        score=dict(s['score'])
+        s['extra_data']={'us_10y':{'status':'PROVISIONAL','value':'4.2',
+            'change_bp':'5','date':'2026-10-27'},
+            'adrs':{'Infosys':{'status':'PROVISIONAL','value':'20',
+                'change_pct':'5','unit':'USD per ADR','date':'2026-10-27'}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'report.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+        self.assertIn('US 10Y FRED\n4.2%\n+5 bp',page)
+        self.assertIn('Infosys\n$20\n+5%',page)
+        self.assertEqual(s['score'],score)
+
     def test_snapshot_withholds_stale_sector_close(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())

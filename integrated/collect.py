@@ -9,7 +9,7 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
-from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
@@ -228,7 +228,7 @@ def compact_flows(results):
 
 def redact(x):
     # Defence in depth before either artifact or compact handoff is written.
-    for name in ('UPSTOX_ANALYTICS_TOKEN','MARKETAUX_API_TOKEN','GITHUB_TOKEN'):
+    for name in ('UPSTOX_ANALYTICS_TOKEN','MARKETAUX_API_TOKEN','FRED_API_KEY','ALPHAVANTAGE_API_KEY','GITHUB_TOKEN'):
         token=os.environ.get(name,'')
         if token:x=news.redact(x,token)
     return x
@@ -301,6 +301,9 @@ def main():
                                (observation,global_row(name,observation,cutoff)))
                         full.setdefault('global',[]).append(r)
                         compact['global'].append(row)
+            compact['extra_data']=extra_data.run(
+                cutoff,os.environ.get('FRED_API_KEY',''),
+                os.environ.get('ALPHAVANTAGE_API_KEY',''))
             news.MAX_PAGES=4
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')

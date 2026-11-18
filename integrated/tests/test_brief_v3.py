@@ -68,7 +68,7 @@ class BriefV3Tests(unittest.TestCase):
             page=pages[1].extract_text()
             self.assertIn('Pre-Market Snapshot',snapshot)
             self.assertIn('RATES, COMMODITIES AND CURRENCY',snapshot)
-            self.assertIn('ADR comparison feed not connected',snapshot)
+            self.assertIn('US close %; ADR/NSE premium N/A without ratio',snapshot)
             self.assertIn('WHY IT MATTERS TODAY',page)
             self.assertIn('KEY NEWS / LAST 12 HOURS',page)
             self.assertIn('OPENING PICTURE',page)
