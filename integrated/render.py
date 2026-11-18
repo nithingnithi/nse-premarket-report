@@ -61,17 +61,17 @@ def render(s,r,path):
         para.drawOn(c,x,top-h);return h
     def label(value,x,top,w=530):p(value.upper(),x,top,w,8,TEAL,True)
     def section(n,title,top):
-        rect(28,top,22,19,TEAL,4);p(n,32,top-3,16,9,'#FFFFFF',True)
-        p(title,59,top-1,508,12,INK,True)
+        p(n+'  /  '+title.upper(),28,top,539,8,TEAL,True)
+        c.setStrokeColor(HexColor(LINE));c.line(28,top-18,567,top-18)
     def base(page,title,kicker):
-        rect(0,842,595,842,PAPER);rect(0,842,595,113,NAVY)
-        rect(28,815,4,49,'#36D2BA')
-        p('NSE / MORNING BRIEF',43,815,440,10,'#76DCCD',True)
-        p(title,42,795,500,27,'#FFFFFF',True)
-        p(kicker,43,754,505,9,'#BDD1D9')
-        c.setStrokeColor(HexColor(LINE));c.line(28,28,567,28)
-        p('Source times and missing fields are shown; score uses available signals only.',28,20,440,7,MUTED)
-        p(f'{page:02d} / 03',525,20,45,7,MUTED,True)
+        rect(0,842,595,842,'#FFFFFF')
+        p(title,35,805,485,25,'#111111',True)
+        p('NSE MORNING BRIEF',454,802,107,8,INK,True)
+        p(kicker,36,769,520,9,MUTED)
+        c.setStrokeColor(HexColor(LINE));c.line(35,751,560,751)
+        c.line(35,42,560,42)
+        p('NSE MORNING BRIEF  |  SAVED SOURCE TIMES',35,31,405,7,MUTED)
+        p(f'{page:02d} / 03',523,31,38,7,MUTED,True)
     day=dt.date.fromisoformat(s['report_date']).strftime('%d %B %Y')
     # A snapshot-style first page uses only observations present by the report cutoff.
     cutoff=dt.datetime.fromisoformat(s['cutoff_IST'])
@@ -173,7 +173,7 @@ def render(s,r,path):
     p('01 / 03',523,31,38,7,MUTED,True)
     c.showPage()
     base(2,'Pre-Market Brief',day+'  |  07:45 IST cutoff  |  Selected data, explicit gaps')
-    q=s['score'];rect(28,714,539,78,'#FFFFFF',8);label('Model bias',42,702)
+    q=s['score'];rect(28,714,539,78,PAPER,8);label('Model bias',42,702)
     bias=q['bias'];headline='Insufficient data for final bias' if bias=='INSUFFICIENT DATA TO ASSIGN FINAL BIAS' else bias.title()
     p(text(headline),42,685,510,19,INK,True)
     p('Available signals are incomplete. Read the score together with its possible range.' if q['available']<6 else 'All six signals are available. The VIX caution remains a separate check.',42,654,505,8.5,MUTED)
@@ -188,14 +188,17 @@ def render(s,r,path):
         ('RAW SCORE',str(q['score']),'Possible range ['+text(q['score_range'])+']'),
         ('COVERAGE',f'{q["available"]} / 6','Valid signals; missing is not zero'),
         ('VIX CAUTION',text(s.get('vix_flag','UNKNOWN')),vix_note)]):
-        x=28+i*183;rect(x,624,173,79,'#FFFFFF',7);label(tag,x+12,613,149)
-        p(value,x+12,594,149,25 if i<2 else 16,TEAL if i==1 else INK,True)
+        x=28+i*183;rect(x,624,173,79,PAPER,7);label(tag,x+12,613,149)
+        color=TEAL if i==1 else change_color(q['score']) if i==0 else AMBER if s.get('vix_flag')=='CAUTION' else INK
+        p(value,x+12,594,149,25 if i<2 else 16,color,True)
         p(note,x+12,560,150,7.5,MUTED)
     names=[('futures_build_up','Futures'),('pcr_direction','PCR'),('strike_walls','OI walls'),('fii_futures','FII futures'),('fii_cash','FII cash'),('dii_cash','DII cash')]
     label('Signal ledger',28,533)
     for i,(key,name) in enumerate(names):
-        x=28+i*91;v=q['signals'][key];rect(x,518,84,39,'#E6EEEE' if v is None else '#D6EEE8',5)
-        p(name,x+7,511,72,8,INK,True);p('MISSING' if v is None else f'{v:+d}',x+7,497,72,7.5,MUTED if v is None else TEAL)
+        x=28+i*91;v=q['signals'][key]
+        rect(x,518,84,39,PAPER if v is None or v==0 else '#E8F5EF' if v>0 else '#FCEDEE',5)
+        p(name,x+7,511,72,8,INK,True)
+        p('MISSING' if v is None else f'{v:+d}',x+7,497,72,7.5,MUTED if v is None else change_color(v))
     section('01','Why it matters today',465)
     flow_rows={row.get('check'):row for row in s.get('flows',[])}
     fii=flow_rows.get('FII cash',{});dii=flow_rows.get('DII cash',{})
@@ -211,7 +214,7 @@ def render(s,r,path):
     opening_fact=('GIFT Nifty '+signed(gap,0)+' points versus previous Nifty close'
                   if gap is not None else 'GIFT Nifty opening indication: N/A / '+reason(markets.get('GIFT NIFTY',{})))
     for i,a in enumerate((opening_fact,cash_fact,levels_fact)):
-        x=28+i*183;rect(x,437,173,82,'#FFFFFF',6);p(f'0{i+1}',x+10,427,25,11,AMBER,True)
+        x=28+i*183;rect(x,437,173,82,PAPER,6);p(f'0{i+1}',x+10,427,25,11,AMBER,True)
         p(text(a),x+10,406,153,8.5,maxh=48)
     section('02','Opening picture',342)
     markets={row.get('name'):row for row in s.get('global',[])}
@@ -229,7 +232,7 @@ def render(s,r,path):
     p(opening,28,314,539,9,INK,True,maxh=13)
     def market_line(name):
         row=markets.get(name,{})
-        return name+' '+number(row.get('value'))+' ('+signed(row.get('change_pct'))+'%)'
+        return text(name)+' '+number(row.get('value'))+' ('+signed(row.get('change_pct'))+'%)'
     p('Global: '+market_line('DOW JONES')+' | '+market_line('S&P')+' | '+market_line('NIKKEI 225'),28,296,539,8,maxh=13)
     p('Forex & oil: '+market_line('USD INR')+' | '+market_line('Oil (Brent)'),28,280,539,8,maxh=13)
     opt=s.get('options',{}).get('NIFTY',{})
@@ -291,14 +294,14 @@ def render(s,r,path):
                      'status':a.get('status','UNAVAILABLE')})
     for i,a in enumerate(rows):
         top=666-i*13
-        if i%2==0:rect(28,top+2,539,13,'#FFFFFF')
+        if i%2==0:rect(28,top+2,539,13,PAPER)
         p(text(a['name']),38,top,152,7.6)
         p(a['display_value'],198,top,105,7.2,INK,True)
         p(a['display_asof'],311,top,146,7,MUTED)
         p(text(a['status']),466,top,93,6.7,TEAL if a['display_value']!='N/A' else MUTED)
     section('05','Options / provisional archive levels',510)
     for i,name in enumerate(('NIFTY','BANKNIFTY')):
-        a=s.get('options',{}).get(name,{});x=28+i*275;rect(x,482,264,122,'#FFFFFF',7)
+        a=s.get('options',{}).get(name,{});x=28+i*275;rect(x,482,264,122,PAPER,7)
         p(name,x+12,471,130,12,INK,True);p('EXP '+text(a.get('expiry')),x+135,469,118,7.5,MUTED)
         p('PCR '+number(a.get('pcr_current'),3),x+12,449,118,14,TEAL,True)
         p('Max pain '+number(a.get('max_pain')),x+132,446,120,8.2,INK,True)
@@ -311,7 +314,7 @@ def render(s,r,path):
     f=s.get('flows',[])
     for i,a in enumerate(f[:5]):
         top=322-i*22
-        if i%2==0:rect(28,top+3,539,22,'#FFFFFF')
+        if i%2==0:rect(28,top+3,539,22,PAPER)
         p(text(a['check']),36,top,151,8,INK,True)
         obs=a.get('daily_observations',[]) if a['check'] in ('NIFTY futures','BANKNIFTY futures') else a.get('observations',[])
         v=obs[0] if obs else {}
