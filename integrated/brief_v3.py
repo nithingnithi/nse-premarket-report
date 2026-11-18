@@ -59,7 +59,8 @@ def vix_flag(daily):
     return 'CAUTION' if level >= VIX_LEVEL_CAUTION or change >= VIX_CHANGE_CAUTION_PCT else 'NORMAL'
 
 INDIA_TERMS = ('nifty', 'sensex', 'rbi', 'rupee', 'fii', 'reliance', 'hdfc',
-               'icici', 'infosys', 'tcs', 'adani', 'bajaj finance')
+               'icici', 'infosys', 'tcs', 'adani', 'bajaj finance',
+               'indian equities', 'indian stocks')
 GLOBAL_TERMS = ('fed', 'fomc', 'treasury', 'us yield', 'crude', 'brent', 'opec', 'oil', 'tariff', 'geopolit')
 UNRELATED_TERMS = ('personal finance', 'credit card', 'mortgage', 'lottery', 'celebrity',
                    'real estate tips', 'oil indicators', 'reservoir discovery', 'drilling site')

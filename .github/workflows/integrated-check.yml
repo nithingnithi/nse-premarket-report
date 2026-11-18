@@ -1,6 +1,11 @@
 name: Integration offline checks
 on:
   workflow_dispatch:
+    inputs:
+      live_extra_probe:
+        description: 'Manual FRED and Alpha Vantage access check; no report or send'
+        type: boolean
+        default: false
   push:
     branches: [main, fix/pdf-morning-delivery]
     paths: ['integrated/**', 'nse_report/**', 'infra/worker/**', '.github/workflows/integrated-*.yml']
@@ -19,6 +24,12 @@ jobs:
       - run: python3 -m unittest discover -s integrated/tests -v
       - run: python3 -m unittest discover -s tests -p test_calculations.py -v
       - run: node infra/worker/worker.test.mjs
+      - name: Probe extra-data access without publication
+        if: github.event_name == 'workflow_dispatch' && inputs.live_extra_probe
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: python3 -m integrated.probe_extra_data
       - name: Synthetic review-to-PDF dry run
         run: |
           mkdir -p handoff review_requests

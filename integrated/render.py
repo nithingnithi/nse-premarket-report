@@ -161,7 +161,7 @@ def render(s,r,path):
         p(text(detail),x,463,122,6.5,MUTED,maxh=19)
     line(35,438,525)
     label('Global / US and Asia',35,421,245)
-    label('ADRs vs NSE close',306,421,250)
+    label('US-listed ADRs / prior close',306,421,250)
     line(35,405,237);line(306,405,254)
     for i,(label_name,key) in enumerate((('Dow','DOW JONES'),('S&P 500','S&P'),
                                            ('US Tech 100','US Tech 100'),('Nikkei','NIKKEI 225'),
@@ -171,14 +171,27 @@ def render(s,r,path):
         p(number(row['value']) if row else 'N/A',127,y,88,8.7,INK,True)
         pct=row.get('change_pct') if row else None
         p(signed(pct)+'%' if pct is not None else 'N/A',218,y,56,8,change_color(pct))
+    extra=s.get('extra_data',{})
+    adrs=extra.get('adrs',{})
     for i,name in enumerate(('Infosys','HDFC Bank','ICICI Bank','Wipro')):
-        y=391-i*22;p(name,307,y,122,8.7,INK);p('N/A',507,y,52,8,MUTED)
-    p('ADR comparison feed not connected',307,292,249,7,MUTED)
+        y=391-i*22;row=adrs.get(name,{})
+        valid=(row.get('status')=='PROVISIONAL' and row.get('unit')=='USD per ADR')
+        p(name,307,y,122,8.7,INK)
+        p(('$'+number(row.get('value'))) if valid else 'N/A',424,y,72,8.7,INK,True)
+        change=row.get('change_pct') if valid else None
+        p(signed(change)+'%' if change is not None else 'N/A',502,y,58,8,change_color(change))
+    p('US close %; ADR/NSE premium N/A without ratio',307,292,249,7,MUTED)
     line(35,256,525)
     label('Rates, commodities and currency',35,240)
     for i,(heading,key) in enumerate((('US 10Y',None),('BRENT','Oil (Brent)'),
                                       ('GOLD',None),('SILVER',None),('USD/INR','USD INR'))):
         x=35+i*105;row,_=observed(key) if key else (None,{})
+        if heading=='US 10Y':
+            yield_row=extra.get('us_10y',{})
+            p('US 10Y FRED',x,219,99,7,MUTED,True)
+            p(number(yield_row.get('value'))+'%' if yield_row.get('status')=='PROVISIONAL' else 'N/A',x,196,99,13,INK,True)
+            p(signed(yield_row.get('change_bp'))+' bp' if yield_row.get('status')=='PROVISIONAL' else 'Change N/A',x,176,99,7,MUTED)
+            continue
         p(heading,x,219,99,7,MUTED,True)
         p(number(row['value']) if row else 'N/A',x,196,99,13,INK,True)
         pct=row.get('change_pct') if row else None
@@ -198,7 +211,7 @@ def render(s,r,path):
                        +stamp(source_row.get('source_asof_IST'))+'.')
     elif fallback.get('status')=='UNAVAILABLE':
         fallback_note='NSE MCP fallback unavailable: '+str(fallback.get('reason') or 'no validated response')
-    else:fallback_note='Other feeds not connected: ADRs, US yield, gold, silver and Kospi.'
+    else:fallback_note='US yield: FRED DGS10 (dated EOD). ADRs and metals: N/A unless validated and permitted.'
     p(text(fallback_note),35,108,525,7,MUTED,maxh=10)
     p(text('; '.join(missing_global[:2])) if missing_global else 'Opening indication is not a forecast and does not alter the model score.',35,96,525,7,MUTED,maxh=18)
     line(35,42,525);p('NSE MORNING BRIEF  |  SAVED SOURCE TIMES',35,31,405,7,MUTED)
@@ -261,12 +274,12 @@ def render(s,r,path):
     except (KeyError,TypeError,ValueError,InvalidOperation,ZeroDivisionError):
         source=gift if gift.get('value') is None else nifty
         opening='GIFT Nifty vs Nifty close: N/A ('+reason(source)[:31]+')'
-    p(opening,28,314,539,9,INK,True,maxh=13)
+    p(opening,28,322,539,9,INK,True,maxh=13)
     def market_line(name):
         row=markets.get(name,{})
         return text(name)+' '+number(row.get('value'))+' ('+signed(row.get('change_pct'))+'%)'
-    p('Global: '+market_line('DOW JONES')+' | '+market_line('S&P')+' | '+market_line('NIKKEI 225'),28,296,539,8,maxh=13)
-    p('Forex & oil: '+market_line('USD INR')+' | '+market_line('Oil (Brent)'),28,280,539,8,maxh=13)
+    p('Global: '+market_line('DOW JONES')+' | '+market_line('S&P')+' | '+market_line('NIKKEI 225'),28,309,539,8,maxh=13)
+    p('Forex & oil: '+market_line('USD INR')+' | '+market_line('Oil (Brent)'),28,296,539,8,maxh=13)
     opt=s.get('options',{}).get('NIFTY',{})
     try:
         spot_level=Decimal(str(nifty['close']))
@@ -275,18 +288,18 @@ def render(s,r,path):
     except (KeyError,TypeError,ValueError,InvalidOperation):put_distance=call_distance='N/A'
     try:countdown=str((dt.date.fromisoformat(opt['expiry'])-dt.date.fromisoformat(s['report_date'])).days)+'d'
     except (KeyError,TypeError,ValueError):countdown='N/A'
-    p('Nifty walls vs spot: put '+put_distance+' | call '+call_distance+' pts | expiry in '+countdown,28,264,539,8,maxh=13)
+    p('Nifty walls vs spot: put '+put_distance+' | call '+call_distance+' pts | expiry in '+countdown,28,283,539,8,maxh=13)
     flows={row.get('check'):row for row in s.get('flows',[])}
     def daily(name):return ((flows.get(name,{}).get('observations') or [{}])[0].get('net_raw')
                             if flows.get(name,{}).get('status')=='PASS' else None)
-    p('Previous session cash: FII '+signed(daily('FII cash'))+' / DII '+signed(daily('DII cash'))+' ₹ cr',28,248,539,8,maxh=13)
-    section('03','Key news / last 12 hours',225)
+    p('Previous session cash: FII '+signed(daily('FII cash'))+' / DII '+signed(daily('DII cash'))+' ₹ cr',28,270,539,8,maxh=13)
+    section('03','Key news / last 12 hours',250)
     news=s.get('news',[])[:8]
     if news:
-        p(text(s.get('news_note') or f'{len(news)} selected from the saved 12-hour window.'),28,207,539,6.3,MUTED,maxh=9)
-    if not news:p('News N/A: '+text(s.get('news_note') or 'No relevant stories in the cutoff window.'),28,197,539,8,MUTED,maxh=20)
+        p(text(s.get('news_note') or f'{len(news)} selected from the saved 12-hour window.'),28,232,539,6.3,MUTED,maxh=9)
+    if not news:p('News N/A: '+text(s.get('news_note') or 'No relevant stories in the cutoff window.'),28,222,539,8,MUTED,maxh=20)
     for i,a in enumerate(news):
-        x=28+(i%2)*275;top=197-(i//2)*40
+        x=28+(i%2)*275;top=222-(i//2)*32
         url=a.get('url') or '';parsed=urlsplit(url)
         raw_title=str(a.get('title') or 'N/A')
         title=text(raw_title[:102]+'...' if len(raw_title)>105 else raw_title)

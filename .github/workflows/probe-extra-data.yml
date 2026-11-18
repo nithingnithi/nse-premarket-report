@@ -1,0 +1,18 @@
+name: Probe FRED and Alpha Vantage on PR branch
+on:
+  push:
+    branches: [fix/pre-market-coverage-nov19]
+    paths: ['.github/workflows/probe-extra-data.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check provider access without publishing
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: python3 -m integrated.probe_extra_data

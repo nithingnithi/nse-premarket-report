@@ -65,6 +65,21 @@ class ReportEnrichmentTests(unittest.TestCase):
             self.assertIn('PSU Bank\n+1.95%',page)
             self.assertIn('Sector N/A: Realty, Auto, FMCG, Energy, IT.',page)
 
+    def test_pdf_renders_dated_extra_data_without_changing_score(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        score=dict(s['score'])
+        s['extra_data']={'us_10y':{'status':'PROVISIONAL','value':'4.2',
+            'change_bp':'5','date':'2026-10-27'},
+            'adrs':{'Infosys':{'status':'PROVISIONAL','value':'20',
+                'change_pct':'5','unit':'USD per ADR','date':'2026-10-27'}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'report.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+        self.assertIn('US 10Y FRED\n4.2%\n+5 bp',page)
+        self.assertIn('Infosys\n$20\n+5%',page)
+        self.assertEqual(s['score'],score)
+
     def test_snapshot_withholds_stale_sector_close(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
@@ -123,6 +138,93 @@ class ReportEnrichmentTests(unittest.TestCase):
             'last_trade_IST':'2026-11-18T01:29:00+05:30'},cutoff)
         self.assertEqual(row['previous_close'],'105')
         self.assertAlmostEqual(float(row['change_pct']),-5/105*100)
+
+    def test_global_v3_previous_close_fills_change_when_net_change_missing(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        class FakeAPI:
+            auth_failed=False
+            last_response_at=cutoff
+            def get(self,path,params,version):
+                return {'GLOBAL_INDEX:NIKKEI 225':{'instrument_token':'GLOBAL_INDEX|^N225',
+                    'last_price':100,'prev_close_price':105 if version=='v3' else None,'net_change':None,
+                    'timestamp':'2026-11-18T07:44:30+05:30',
+                    'last_trade_time':'2026-11-18T07:44:25+05:30'}}
+        instrument={'name':'NIKKEI 225','instrument_key':'GLOBAL_INDEX|^N225','segment':'GLOBAL_INDEX'}
+        result=global_data.global_quote_check(FakeAPI(),instrument,cutoff)
+        row=global_row('NIKKEI 225',result,cutoff)
+        self.assertEqual(result['selected_method'],'v3_full_quote')
+        self.assertEqual(row['previous_close'],'105')
+        self.assertAlmostEqual(float(row['change_pct']),-5/105*100)
+
+    def test_global_index_cutoff_candle_uses_last_complete_minute(self):
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        class FakeAPI:
+            auth_failed=False
+            last_response_at=cutoff+dt.timedelta(seconds=30)
+            def get(self,path,params,version):
+                if '/days/1/' in path:
+                    return {'candles':[['2026-11-17T00:00:00+05:30',98,101,97,100,0,0]]}
+                return {'candles':[
+                    ['2026-11-18T07:45:00+05:30',110,111,109,float('nan'),0,0],
+                    ['2026-11-18T07:44:00+05:30',105,106,104,105,0,0]]}
+        instrument={'name':'NIKKEI 225','instrument_key':'GLOBAL_INDEX|^N225','segment':'GLOBAL_INDEX'}
+        result=global_data.indicator_check(FakeAPI(),instrument,cutoff)
+        row=global_row('NIKKEI 225',result,cutoff)
+        self.assertEqual((row['status'],row['value']),('PROVISIONAL',105))
+        self.assertEqual(row['asof'],'2026-11-18T07:44:00+05:30')
+        self.assertEqual(row['previous_close'],'100')
+
+    def test_after_cutoff_global_quote_selects_pre_cutoff_candle(self):
+        from integrated.collect import global_observation
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        observed=cutoff+dt.timedelta(seconds=30)
+        class FakeAPI:
+            auth_failed=False
+            last_response_at=observed
+            def get(self,path,params,version):
+                if path=='/market-quote/quotes':
+                    return {'GLOBAL_INDEX:NIKKEI 225':{'instrument_token':'GLOBAL_INDEX|^N225',
+                        'last_price':106,'timestamp':observed.isoformat(),
+                        'last_trade_time':(cutoff+dt.timedelta(seconds=10)).isoformat()}}
+                if '/days/1/' in path:
+                    return {'candles':[['2026-11-17T00:00:00+05:30',98,101,97,100,0,0]]}
+                return {'candles':[
+                    ['2026-11-18T07:45:00+05:30',106,107,105,106,0,0],
+                    ['2026-11-18T07:44:00+05:30',105,106,104,105,0,0]]}
+        instrument={'name':'NIKKEI 225','instrument_key':'GLOBAL_INDEX|^N225','segment':'GLOBAL_INDEX'}
+        result,row=global_observation(FakeAPI(),instrument,cutoff,observed)
+        self.assertEqual(result['selected_method'],'v3_intraday_minute_candles')
+        self.assertEqual((row['status'],row['value'],row['asof']),
+                         ('PROVISIONAL',105,'2026-11-18T07:44:00+05:30'))
+
+    def test_after_cutoff_quote_without_completed_bar_stays_unavailable(self):
+        from integrated.collect import global_observation
+        cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
+        observed=cutoff+dt.timedelta(seconds=30)
+        class FakeAPI:
+            auth_failed=False
+            last_response_at=observed
+            def get(self,path,params,version):
+                if path=='/market-quote/quotes':
+                    return {'GLOBAL_INDEX:NIKKEI 225':{'instrument_token':'GLOBAL_INDEX|^N225',
+                        'last_price':106,'timestamp':observed.isoformat(),
+                        'last_trade_time':observed.isoformat()}}
+                return {'candles':[['2026-11-18T07:45:00+05:30',106,107,105,106,0,0]]}
+        instrument={'name':'NIKKEI 225','instrument_key':'GLOBAL_INDEX|^N225','segment':'GLOBAL_INDEX'}
+        _,row=global_observation(FakeAPI(),instrument,cutoff,observed)
+        self.assertEqual((row['status'],row['value']),('AFTER CUTOFF',None))
+        self.assertIn('completed minute',row['reason'])
+
+    def test_published_global_index_minute_path_is_read_only_allowed(self):
+        class Response:
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def read(self,limit):return b'{"status":"success","data":{"candles":[]}}'
+        class Opener:
+            def open(self,request,timeout):return Response()
+        api=global_data.API('x'*20);api.opener=Opener()
+        data=api.get('/historical-candle/intraday/GLOBAL_INDEX%7C%5EN225/minutes/1',{},version='v3')
+        self.assertEqual(data,{'candles':[]})
 
     def test_indicator_change_uses_prior_completed_daily_close(self):
         cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)

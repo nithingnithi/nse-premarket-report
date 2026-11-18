@@ -4,7 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from pypdf import PdfReader
+from reportlab.platypus import Paragraph
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events, caption
 from integrated.render import render
 
@@ -32,10 +34,12 @@ class BriefV3Tests(unittest.TestCase):
     def test_news_ranking_and_event_filter(self):
         rows=[{'title':title,'url':f'https://example.org/{i}','published_IST':'2030-01-08T07:00:00+05:30','source':'example.org'}
               for i,title in enumerate(('RBI rupee India markets','Nifty FII India stocks','India Sensex banking',
-                                         'Fed US yields','OPEC crude oil','Celebrity lottery tips',
+                                         'Fed US yields','OPEC crude oil','Indian equities slip as banks decline',
+                                         'Celebrity lottery tips',
                                          'Oil Indicators Found in a Reservoir'))]
         selected=select_news(rows)
-        self.assertEqual(len(selected),5)
+        self.assertEqual(len(selected),6)
+        self.assertIn('Indian equities slip as banks decline',[x['title'] for x in selected])
         self.assertNotIn('Celebrity lottery tips',[x['title'] for x in selected])
         us,india=select_events([{'agency':'BLS','title':'Consumer Price Index','date_IST':'2030-01-08'},
                                 {'agency':'BLS','title':'Outdoor Recreation Statistics','date_IST':'2030-01-08'},
@@ -64,7 +68,7 @@ class BriefV3Tests(unittest.TestCase):
             page=pages[1].extract_text()
             self.assertIn('Pre-Market Snapshot',snapshot)
             self.assertIn('RATES, COMMODITIES AND CURRENCY',snapshot)
-            self.assertIn('ADR comparison feed not connected',snapshot)
+            self.assertIn('US close %; ADR/NSE premium N/A without ratio',snapshot)
             self.assertIn('WHY IT MATTERS TODAY',page)
             self.assertIn('KEY NEWS / LAST 12 HOURS',page)
             self.assertIn('OPENING PICTURE',page)
@@ -73,6 +77,23 @@ class BriefV3Tests(unittest.TestCase):
             self.assertIn('8 shown of 8 matched',page)
             for forbidden in ('PARTIAL TRIAL','MCP','GitHub Actions','shadow, not counted'):
                 self.assertNotIn(forbidden,page)
+    def test_eight_news_items_clear_page_footer(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        s['news']=[{'title':f'India market report {i} with important recent factual developments affecting the next trading session',
+                    'source':'example.org','url':f'https://example.org/{i}',
+                    'published_IST':'2026-10-28T06:30:00+05:30'} for i in range(8)]
+        with tempfile.TemporaryDirectory() as d:
+            positions=[]
+            original=Paragraph.drawOn
+            def traced(paragraph,canvas,x,y,*args,**kwargs):
+                if 'India market report 7' in paragraph.getPlainText():
+                    positions.append(y)
+                return original(paragraph,canvas,x,y,*args,**kwargs)
+            path=Path(d)/'brief.pdf'
+            with patch.object(Paragraph,'drawOn',traced):render(s,r,path)
+            self.assertEqual(len(positions),1)
+            self.assertGreaterEqual(positions[0],55)
     def test_snapshot_does_not_turn_gap_into_model_bias_or_show_after_cutoff_quote(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
