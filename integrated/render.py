@@ -1,4 +1,4 @@
-"""Two-page editorial briefing. Visual formatting only; no scoring changes."""
+"""Three-page editorial briefing. Visual formatting only; no scoring changes."""
 from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -190,7 +190,16 @@ def render(s,r,path):
     missing_sectors=[name for name in sector_names if sector_change(sector_rows.get(name,{})) is None]
     p('Index N/A: '+(', '.join(missing_indices) or 'none')+'.',35,132,525,7,MUTED,maxh=10)
     p('Sector N/A: '+(', '.join(missing_sectors) or 'none')+'.',35,120,525,7,MUTED,maxh=10)
-    p('Other feeds not connected: ADRs, US yield, gold, silver and Kospi.',35,108,525,7,MUTED)
+    fallback=s.get('cm_market_fallback',{})
+    used=fallback.get('used',[])
+    if used:
+        source_row=spot.get(used[0],s.get('sectors',{}).get(used[0],{}))
+        fallback_note=('NSE MCP supplied '+str(len(used))+' dated closes at '
+                       +stamp(source_row.get('source_asof_IST'))+'.')
+    elif fallback.get('status')=='UNAVAILABLE':
+        fallback_note='NSE MCP fallback unavailable: '+str(fallback.get('reason') or 'no validated response')
+    else:fallback_note='Other feeds not connected: ADRs, US yield, gold, silver and Kospi.'
+    p(text(fallback_note),35,108,525,7,MUTED,maxh=10)
     p(text('; '.join(missing_global[:2])) if missing_global else 'Opening indication is not a forecast and does not alter the model score.',35,96,525,7,MUTED,maxh=18)
     line(35,42,525);p('NSE MORNING BRIEF  |  SAVED SOURCE TIMES',35,31,405,7,MUTED)
     p('01 / 03',523,31,38,7,MUTED,True)
@@ -307,7 +316,7 @@ def render(s,r,path):
         spot=s.get('spot',{}).get(name,{})
         if spot.get('status')=='PASS':
             value=number(spot.get('close'))+' ('+signed(spot.get('change_pct'))+'%)'
-            asof=text(spot.get('latest_date'))+' close'
+            asof=text(spot.get('latest_date'))+' close / '+('NSE MCP' if spot.get('source')=='NSE CM Market MCP' else 'Upstox')
         else:value='N/A';asof=reason(spot)
         rows.append({'name':name+' spot','display_value':value,'display_asof':asof,
                      'status':'D CLOSE' if spot.get('status')=='PASS' else 'UNAVAILABLE'})

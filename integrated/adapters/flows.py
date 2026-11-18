@@ -481,6 +481,7 @@ def run_checks(api, now, observed_now=None):
     try:
         dates, closes, checked = completed_sessions(api, now)
         results.append({"check": "Provider session calendar", "status": "PASS", "completed_sessions": dates,
+                        "latest_nse_close_IST": closes[("NSE", dates["NSE"][0])],
                         "calendar_dates_checked": checked,
                         "scope": "Provider timings only; independent NSE-calendar reconciliation remains pending."})
     except CheckFailure as exc:

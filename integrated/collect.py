@@ -9,7 +9,7 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
-from integrated.adapters import flows, global_data, news, calendar, archive
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
@@ -135,6 +135,31 @@ def index_result(api,key,sessions,cutoff,exchange='NSE'):
     except flows.CheckFailure as exc:return {'status':'UNAVAILABLE','reason':str(exc)[:160]}
     except Exception:return {'status':'UNAVAILABLE','reason':'Daily index request or schema failed'}
 
+def supplement_nse_indices(spot,sectors,sessions,cutoff,session_close,fetch=nse_mcp.fetch_indices):
+    """Use only exact-session MCP closes where the Upstox index row is missing."""
+    targets={**{name:spot for name in ('NIFTY','BANKNIFTY','MIDCAP100','SMALLCAP100')},
+             **{name:sectors for name in ('PSU Bank','Realty','Auto','FMCG','Energy','IT')}}
+    missing=[name for name,group in targets.items() if group.get(name,{}).get('status')!='PASS']
+    if not missing:return {'status':'NOT_NEEDED','used':[]}
+    try:rows=fetch(sessions,cutoff,session_close)
+    except Exception as exc:
+        why=str(exc) if isinstance(exc,nse_mcp.CheckFailure) else 'NSE MCP request or validation failed'
+        for name in missing:
+            row=targets[name].setdefault(name,{'status':'UNAVAILABLE'})
+            row['mcp_fallback_reason']=why
+        return {'status':'UNAVAILABLE','reason':why,'used':[]}
+    used=[]
+    for name in missing:
+        candidate=rows.get(name,{'status':'UNAVAILABLE','reason':'NSE MCP index was not returned'})
+        if candidate.get('status')=='PASS':
+            candidate['upstox_reason']=targets[name].get(name,{}).get('reason')
+            targets[name][name]=candidate
+            used.append(name)
+        else:
+            targets[name].setdefault(name,{'status':'UNAVAILABLE'})['mcp_fallback_reason']=candidate.get('reason')
+    return {'status':'PASS' if len(used)==len(missing) else 'PARTIAL','used':used,
+            'unfilled':[name for name in missing if name not in used]}
+
 _OPTION_FAILURES={'Expiry changed','Duplicate','Unpaired',
                   'Multiple lot sizes in selected option expiry',
                   'Unexpected option baseline sessions','Mixed option underlying, expiry, units or providers',
@@ -213,6 +238,7 @@ def main():
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
             if cal:
                 compact['completed_sessions']=cal['completed_sessions']
+                compact['latest_nse_close_IST']=cal['latest_nse_close_IST']
                 compact['score']=clean(score_summary(cash_signals(results,cal['completed_sessions']['NSE'])))
                 sessions=cal['completed_sessions']['NSE']
                 compact['spot']={name:index_result(api,flows.INDICES[source],sessions,cutoff) for name,source in
@@ -222,6 +248,8 @@ def main():
                     cal['completed_sessions'].get('BSE',[]),cutoff,'BSE')
                 compact['sectors']={name:index_result(api,flows.INDICES[name],sessions,cutoff) for name in
                                     ('PSU Bank','Realty','Auto','FMCG','Energy','IT')}
+                compact['cm_market_fallback']=supplement_nse_indices(
+                    compact['spot'],compact['sectors'],sessions,cutoff,cal['latest_nse_close_IST'])
                 compact['vix_daily']=index_result(api,flows.INDICES['India VIX'],sessions,cutoff)
                 compact['vix_flag']=vix_flag(compact['vix_daily'])
                 dates=cal['completed_sessions']['NFO']
