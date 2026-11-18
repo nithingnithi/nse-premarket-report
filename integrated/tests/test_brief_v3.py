@@ -59,14 +59,36 @@ class BriefV3Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'brief.pdf';render(s,r,path)
             pages=PdfReader(path).pages
-            self.assertEqual(len(pages),2)
-            page=pages[0].extract_text()
+            self.assertEqual(len(pages),3)
+            snapshot=pages[0].extract_text()
+            page=pages[1].extract_text()
+            self.assertIn('Pre-Market Snapshot',snapshot)
+            self.assertIn('RATES, COMMODITIES AND CURRENCY',snapshot)
+            self.assertIn('ADR comparison feed not connected',snapshot)
+            self.assertIn('Why it matters today',page)
+            self.assertIn('Key news / last 12 hours',page)
             self.assertIn('Opening picture',page)
             self.assertIn('example.org',page)
             self.assertIn('India market report 7',page)
             self.assertIn('8 shown of 8 matched',page)
             for forbidden in ('PARTIAL TRIAL','MCP','GitHub Actions','shadow, not counted'):
                 self.assertNotIn(forbidden,page)
+    def test_snapshot_does_not_turn_gap_into_model_bias_or_show_after_cutoff_quote(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        s['completed_sessions']={'NSE':['2026-10-27']}
+        s['spot']={'NIFTY':{'status':'PASS','latest_date':'2026-10-27','close':'100','change_pct':'2'}}
+        s['global']=[{'name':'GIFT NIFTY','status':'PROVISIONAL','value':95,
+                      'asof':'2026-10-28T07:44:00+05:30'},
+                     {'name':'NIKKEI 225','status':'PROVISIONAL','value':999,
+                      'asof':'2026-10-28T07:46:00+05:30'}]
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'brief.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+            self.assertIn('Gap-down',page)
+            self.assertIn('-5 pts',page)
+            self.assertIn('Insufficient Data To\nAssign Final Bias',page)
+            self.assertNotIn('999',page)
     def test_pdf_explains_missing_market_and_source_fields(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())

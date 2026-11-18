@@ -149,7 +149,7 @@ class ReportEnrichmentTests(unittest.TestCase):
             path = Path(directory) / 'report.pdf'
             render(s, r, path)
             reader = PdfReader(path)
-            self.assertEqual(len(reader.pages), 2)
+            self.assertEqual(len(reader.pages), 3)
             content = '\n'.join(page.extract_text() for page in reader.pages)
             for expected in ('D 16', 'NIFTY spot', 'BANKNIFTY', '1.25', 'Contract universe changed',
                              'OI 120', '10-27:+2', 'Opening picture', 'Insufficient data for final bias'):
