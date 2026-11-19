@@ -440,7 +440,7 @@ def render_visual(s, review, path):
     v.page(3,'News, events & data quality','Recent headlines  |  IST calendar  |  Missing-field explanations')
     news=s.get('news',[])[:8]
     v.section('Market-moving news',140,s.get('news_note') or f'{len(news)} shown from saved window')
-    for i in range(8):
+    for i in range(max(1,len(news))):
         x=M+(i%2)*274.5;y=159+(i//2)*78
         v.box(x,y,264.5,72,border=True)
         if i>=len(news):

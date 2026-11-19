@@ -46,6 +46,26 @@ class BriefV3Tests(unittest.TestCase):
                                 {'agency':'RBI','title':'RBI decision','date_IST':'2030-01-08'}],
                                '2030-01-08',[('NIFTY','2030-01-08')])
         self.assertEqual(len(us),1);self.assertEqual(len(india),2)
+
+    def test_india_first_and_global_stories_never_fill_missing_india_slots(self):
+        domestic = ['SEBI weighs MTF limits', 'RBI reacts to Fed rate decision',
+                    'FIIs buy Indian equities', 'Sensex rises', 'NSE reviews listing norms',
+                    'Indian banks raise deposit rates']
+        overseas = ['Fed rate decision moves Treasury yields', 'OPEC reviews crude oil output',
+                    'ECB rate cut', 'Wall Street selloff widens', 'US celebrity picks a credit card']
+        rows = [{'title': title, 'url': f'https://example.org/{i}',
+                 'published_IST':'2030-01-08T07:00:00+05:30'}
+                for i, title in enumerate(overseas + domestic)]
+        titles = [row['title'] for row in select_news(rows + [rows[-1]])]
+        self.assertEqual(set(titles[:6]), set(domestic))
+        self.assertEqual(len(titles), 8)
+
+        sparse = select_news(rows[:len(overseas)+1])
+        self.assertEqual(sparse[0]['title'], domestic[0])
+        self.assertEqual(len(sparse), 1)
+        self.assertEqual(len(select_news(rows[:len(overseas)+2])), 3)
+        self.assertEqual(select_news(rows, limit=1)[0]['title'], titles[0])
+
     def test_caption_six_lines_and_pdf(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
