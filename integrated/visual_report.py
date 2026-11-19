@@ -297,7 +297,10 @@ def render_visual(s, review, path):
     for i,(label,key) in enumerate(global_names):
         x=M+11+(i//3)*129;y=617+(i%3)*27
         row=market(key)
-        v.write(label,x,y,120,6.9,MUTED,True)
+        if row and row.get('basis') == 'Previous close':
+            observed = dt.datetime.fromisoformat(row['asof'])
+            label += observed.strftime(' / %d %b close').upper()
+        v.write(label,x,y,120,6.9,MUTED,True,url=row.get('url') if row else None)
         v.write(number(row.get('value')) if row else 'N/A',x,y+10,67,8,INK if row else AMBER,True)
         v.write((signed(row.get('change_pct'))+'%') if row and row.get('change_pct') is not None else 'N/A',
                 x+69,y+10,54,7.4,color(row.get('change_pct')) if row else AMBER,True)
@@ -308,8 +311,11 @@ def render_visual(s, review, path):
            ('GOLD',extra.get('metals',{}).get('GOLD',{}),'USD/oz'),
            ('SILVER',extra.get('metals',{}).get('SILVER',{}),'USD/oz')]
     metal_times={}
+    v.line(434.5,616,434.5,695)
+    for top in (641,668):
+        v.line(313,top,556,top)
     for i,(label,row,unit) in enumerate(macro):
-        x=313+(i//3)*126;y=623+(i%3)*22
+        x=313+(i//3)*127;y=618+(i%3)*27
         raw=row.get('value') if row else None
         amount=dec(raw)
         valid=(amount is not None and amount>0 and row.get('status') in ('PASS','PROVISIONAL')) if row else False
@@ -323,16 +329,22 @@ def render_visual(s, review, path):
                 valid=False
         if label=='US 10Y' and row:
             valid=valid and row.get('unit')=='%'
-        v.write(label,x,y,55,6.8,MUTED,True)
-        displayed=(f'${amount:,.2f}' if metal else number(raw)+('%' if unit=='%' else '')) if valid else 'N/A'
-        v.write(displayed,x+58,y,61,7.6,INK if valid else AMBER,True)
+        v.write(label,x,y,48,6.8,MUTED,True)
+        prefix = '$' if unit in ('USD', 'USD/oz') else ''
+        suffix = '%' if unit == '%' else ''
+        displayed = f'{prefix}{amount:,.2f}{suffix}' if valid else 'N/A'
+        v.write(displayed,x+50,y,67,7.6,INK if valid else AMBER,True)
+        quote_time='As of N/A'
         if metal and valid:
             observed=observed.astimezone(cutoff.tzinfo)
             metal_times[label]=observed
             quote_time=observed.strftime('%d %b %H:%M:%S IST')
             if observed>cutoff:
                 quote_time='LIVE '+quote_time
-            v.write(quote_time,x,y+10,119,6.2,MUTED)
+        elif valid:
+            quote_time=(str(row['date'])+' EOD' if label=='US 10Y' and row.get('date')
+                        else stamp(row.get('asof')))
+        v.write(quote_time,x,y+11,118,6.2,MUTED)
     v.section('US-listed ADRs',714,'US EOD; no implied NSE premium')
     v.box(M,732,W-2*M,63,border=True)
     for i,name in enumerate(('Infosys','Wipro','ICICI Bank','HDFC Bank')):
@@ -340,9 +352,13 @@ def render_visual(s, review, path):
         if i:v.line(x,740,x,783)
         row=extra.get('adrs',{}).get(name,{})
         valid=row.get('status')=='PROVISIONAL' and row.get('unit')=='USD per ADR'
-        v.write(name.upper(),x+9,743,115,7.2,MUTED,True)
-        v.write(signed(row.get('change_pct'))+'%' if valid and row.get('change_pct') is not None else 'N/A',
-                x+9,759,115,13,color(row.get('change_pct')) if valid else AMBER,True)
+        v.write(name.upper(),x+9,743,115,7.2,MUTED,True,url=row.get('url') if valid else None)
+        amount = dec(row.get('value')) if valid else None
+        change = dec(row.get('change_pct')) if valid else None
+        v.write(f'${amount:,.2f}' if amount is not None else 'N/A',
+                x+9,759,60,11,INK if amount is not None else AMBER,True)
+        if change is not None:
+            v.write(signed(change)+'%',x+73,762,50,8,color(change),True)
         adr_time=(('As of '+stamp(row.get('asof_IST'))) if row.get('asof_IST') else
                   (str(row.get('date') or 'Date N/A')+' EOD; time N/A'))
         v.write(adr_time if valid else label_reason(row),
@@ -442,7 +458,7 @@ def render_visual(s, review, path):
         previous_label='PCR (MATCHED: PRIOR / CURRENT)' if matched else 'PREVIOUS PCR'
         previous=number(row.get('pcr_previous'),3) if comparable else 'N/A'
         oi_label='CALL / PUT OI CHANGE'
-        oi_change=(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if comparable else 'N/A'
+        oi_change=(signed(row.get('call_oi_change'),0)+' / '+signed(row.get('put_oi_change'),0)) if comparable else 'N/A'
         if matched:
             previous=number(matched.get('pcr_previous'),3)+' / '+number(matched.get('pcr_current'),3)
             oi_label+=' (MATCHED)'
@@ -534,7 +550,9 @@ def render_visual(s, review, path):
     gaps=[]
     for name in ('GIFT NIFTY','USD INR','Oil (Brent)','NIKKEI 225','HANG SENG','KOSPI'):
         if market(name) is None:
-            gaps.append((name,label_reason(markets[name]) if name in markets else 'No configured provider observation'))
+            fallback = ('KOSPI is absent from the Upstox global catalog' if name == 'KOSPI'
+                        else 'No configured provider observation')
+            gaps.append((name,label_reason(markets[name]) if name in markets else fallback))
     for name in ('GOLD','SILVER'):
         row=extra.get('metals',{}).get(name,{})
         if name not in metal_times:

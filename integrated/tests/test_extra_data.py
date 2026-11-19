@@ -39,6 +39,39 @@ class ExtraDataTests(unittest.TestCase):
             self.assertEqual(extra_data.adr_quote(bad, 'INFY', CUTOFF)['status'],
                              'UNAVAILABLE')
 
+    def test_empty_adr_quotes_use_dated_daily_fallback(self):
+        def fake(url):
+            if 'GLOBAL_QUOTE' in url:
+                return {'Global Quote': {}}
+            symbol = url.split('symbol=')[1].split('&')[0]
+            return {'Meta Data': {'2. Symbol': symbol, '5. Time Zone': 'US/Eastern'},
+                    'Time Series (Daily)': {
+                        '2026-11-19': {'4. close': '99'},
+                        '2026-11-18': {'4. close': '21'},
+                        '2026-11-17': {'4. close': '20'}}}
+        row = extra_data.run(CUTOFF, '', 'fixture', fetch=fake)
+        self.assertEqual(row['requests']['alpha'], 8)
+        self.assertEqual(row['adrs']['Wipro']['value'], '21')
+        self.assertEqual(row['adrs']['ICICI Bank']['change_pct'], '5')
+
+    def test_rate_limit_stops_requests_and_hides_raw_message(self):
+        def fake(url):
+            return {'Information': 'Daily API rate limit reached: fixture-private'}
+        row = extra_data.run(CUTOFF, '', 'fixture', fetch=fake)
+        self.assertEqual(row['requests']['alpha'], 1)
+        self.assertEqual(row['adrs']['HDFC Bank']['reason'], 'Alpha Vantage rate limit reached')
+        self.assertNotIn('fixture-private', repr(row))
+
+    def test_daily_fallback_rejects_wrong_symbol_or_bad_latest_close(self):
+        metadata = {'2. Symbol': 'HDB', '5. Time Zone': 'US/Eastern'}
+        bars = {'2026-11-18': {'4. close': 'NaN'}, '2026-11-17': {'4. close': '20'},
+                '2026-11-16': {'4. close': '19'}}
+        self.assertEqual(extra_data.adr_daily({'Meta Data': metadata,
+            'Time Series (Daily)': bars}, 'HDB', CUTOFF)['status'], 'UNAVAILABLE')
+        bars['2026-11-18']['4. close'] = '21'
+        self.assertEqual(extra_data.adr_daily({'Meta Data': metadata,
+            'Time Series (Daily)': bars}, 'IBN', CUTOFF)['status'], 'UNAVAILABLE')
+
     def test_missing_keys_do_not_fetch_or_become_zero(self):
         def forbidden(_):
             self.fail('Network fetch attempted')

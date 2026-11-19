@@ -74,7 +74,9 @@ class VisualReportTests(unittest.TestCase):
                                    'BSE':['2026-10-27','2026-10-26']}
         s['spot'] = {'BANKNIFTY':{'status':'PASS','latest_date':'2026-10-27',
                                   'close':'105','change_pct':'1'}}
-        s['options'] = {'BANKNIFTY':{'status':'PARTIAL','expiry':'2026-10-29',
+        s['options'] = {'NIFTY': {'status':'PASS','expiry':'2026-10-29',
+                                 'call_oi_change':2500,'put_oi_change':-900},
+                        'BANKNIFTY':{'status':'PARTIAL','expiry':'2026-10-29',
                         'pcr_current':'1.25','pcr_previous':None,
                         'call_walls':['110'],'put_walls':['100'],'max_pain':['105'],
                         'call_oi_change':None,'put_oi_change':None,
@@ -95,6 +97,7 @@ class VisualReportTests(unittest.TestCase):
             self.assertIn('Current levels only',pages[1].extract_text())
             self.assertIn('OI change withheld',pages[1].extract_text())
             self.assertIn('PREVIOUS PCR\nN/A',pages[1].extract_text())
+            self.assertIn('CALL / PUT OI CHANGE\n+2,500 / -900',pages[1].extract_text())
             s['options']['BANKNIFTY'].update(strikes=198,matched_comparison={
                 'strikes':190,'previous_strikes':190,'pcr_previous':'1.34','pcr_current':'1.18',
                 'call_oi_change':1500,'put_oi_change':-600})
