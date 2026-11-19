@@ -289,7 +289,7 @@ def render_visual(s, review, path):
                 color(change) if change is not None else AMBER,True)
 
     v.section('Global markets & cross-assets', 573,
-              'Mixed sessions; metals are USD/troy oz and may be live')
+              'Gold API spot in USD/troy oz | Quote times in IST')
     v.box(M, 592, 264, 111, border=True)
     v.write('OVERSEAS INDICES',M+11,602,240,7.6,MUTED,True)
     global_names=(('DOW','DOW JONES'),('S&P 500','S&P'),('US TECH','US Tech 100'),
@@ -307,12 +307,14 @@ def render_visual(s, review, path):
            ('WTI',market('Oil (WTI)'),'USD'),('USD/INR',market('USD INR'),'INR'),
            ('GOLD',extra.get('metals',{}).get('GOLD',{}),'USD/oz'),
            ('SILVER',extra.get('metals',{}).get('SILVER',{}),'USD/oz')]
+    metal_times={}
     for i,(label,row,unit) in enumerate(macro):
         x=313+(i//3)*126;y=623+(i%3)*22
         raw=row.get('value') if row else None
         amount=dec(raw)
         valid=(amount is not None and amount>0 and row.get('status') in ('PASS','PROVISIONAL')) if row else False
-        if label in ('GOLD','SILVER') and row:
+        metal=label in ('GOLD','SILVER')
+        if metal and row:
             valid=valid and row.get('unit')=='USD per troy oz'
             try:
                 observed=dt.datetime.fromisoformat(row['asof_IST'])
@@ -322,8 +324,15 @@ def render_visual(s, review, path):
         if label=='US 10Y' and row:
             valid=valid and row.get('unit')=='%'
         v.write(label,x,y,55,6.8,MUTED,True)
-        displayed=(('$' if label in ('GOLD','SILVER') else '')+number(raw)+('%' if unit=='%' else '')) if valid else 'N/A'
+        displayed=(f'${amount:,.2f}' if metal else number(raw)+('%' if unit=='%' else '')) if valid else 'N/A'
         v.write(displayed,x+58,y,61,7.6,INK if valid else AMBER,True)
+        if metal and valid:
+            observed=observed.astimezone(cutoff.tzinfo)
+            metal_times[label]=observed
+            quote_time=observed.strftime('%d %b %H:%M:%S IST')
+            if observed>cutoff:
+                quote_time='LIVE '+quote_time
+            v.write(quote_time,x,y+10,119,6.2,MUTED)
     v.section('US-listed ADRs',714,'US EOD; no implied NSE premium')
     v.box(M,732,W-2*M,63,border=True)
     for i,name in enumerate(('Infosys','Wipro','ICICI Bank','HDFC Bank')):
@@ -517,8 +526,9 @@ def render_visual(s, review, path):
             gaps.append((name,label_reason(markets[name]) if name in markets else 'No configured provider observation'))
     for name in ('GOLD','SILVER'):
         row=extra.get('metals',{}).get(name,{})
-        if row.get('status') not in ('PASS','PROVISIONAL'):
-            gaps.append((name,label_reason(row)))
+        if name not in metal_times:
+            why=label_reason(row) if row.get('status') not in ('PASS','PROVISIONAL') else 'Spot price, units or timestamp unavailable'
+            gaps.append((name,why))
     for name,key in (('NIFTY OPTIONS','NIFTY'),('BANK NIFTY OPTIONS','BANKNIFTY')):
         row=options.get(key,{})
         if row.get('status')=='PARTIAL' and row.get('matched_comparison'):
@@ -554,13 +564,8 @@ def render_visual(s, review, path):
             except (KeyError,ValueError,TypeError):pass
     if extra.get('us_10y',{}).get('status')=='PROVISIONAL':
         clocks.append('US10Y '+str(extra['us_10y'].get('date') or 'date N/A')+' EOD')
-    for label in ('GOLD','SILVER'):
-        row=extra.get('metals',{}).get(label,{})
-        if row.get('status')=='PROVISIONAL':
-            try:
-                observed=dt.datetime.fromisoformat(row['asof_IST'])
-                clocks.append(label+(' LIVE ' if observed>cutoff else ' ')+observed.strftime('%d %b %H:%M'))
-            except (KeyError,ValueError,TypeError):pass
+    for label,observed in metal_times.items():
+        clocks.append(label+(' LIVE ' if observed>cutoff else ' ')+observed.strftime('%d %b %H:%M'))
     if len(gaps)>8:clocks.append(str(len(gaps)-8)+' further unavailable fields')
     v.write(' | '.join(clocks) or 'Source times unavailable',M+11,773,517,6.3,'#D8E3F1',max_lines=2)
     v.c.save()

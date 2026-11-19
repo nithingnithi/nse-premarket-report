@@ -116,6 +116,7 @@ class VisualReportTests(unittest.TestCase):
             render_visual(s, review, path)
             page = PdfReader(path).pages[0].extract_text()
             self.assertIn('$4,000', page)
+            self.assertIn('LIVE 28 Oct 07:46:00 IST', page)
             self.assertIn('GOLD LIVE 28 Oct 07:46', PdfReader(path).pages[2].extract_text())
             self.assertNotIn('50\n28 Oct', page)
 

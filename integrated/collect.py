@@ -11,7 +11,7 @@ import urllib.request
 import urllib.parse
 from collections import Counter
 from dataclasses import replace
-from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data, metals
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
@@ -273,6 +273,7 @@ def main():
             compact['trading_day']='OPEN' if 'NSE' in session and 'NFO' in session else 'CLOSED'
         else:compact['trading_day']='UNVERIFIED'
         if compact['trading_day']=='OPEN':
+            spot_metals=metals.run(cutoff)
             results=attempt(lambda:flows.run_checks(api,cutoff,observed_now=now));full['flows']=results
             compact['flows']=compact_flows(results)
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
@@ -327,6 +328,7 @@ def main():
             compact['extra_data']=extra_data.run(
                 cutoff,os.environ.get('FRED_API_KEY',''),
                 os.environ.get('ALPHAVANTAGE_API_KEY',''))
+            compact['extra_data']['metals']=spot_metals
             news.MAX_PAGES=4
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
