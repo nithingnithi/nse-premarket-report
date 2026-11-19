@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from integrated.review import IST,load,validate
 from integrated.telegram import send
-from integrated.render import render
+from integrated.visual_report import render_visual as render
 from integrated.brief_v3 import caption
 
 def persist(path):
