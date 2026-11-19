@@ -94,6 +94,15 @@ class VisualReportTests(unittest.TestCase):
             self.assertIn('Current levels only',pages[1].extract_text())
             self.assertIn('OI change withheld',pages[1].extract_text())
             self.assertIn('PREVIOUS PCR\nN/A',pages[1].extract_text())
+            s['options']['BANKNIFTY'].update(strikes=198,matched_comparison={
+                'strikes':190,'previous_strikes':190,'pcr_previous':'1.34','pcr_current':'1.18',
+                'call_oi_change':1500,'put_oi_change':-600})
+            render_visual(s, review, path)
+            page=PdfReader(path).pages[1].extract_text()
+            self.assertIn('PCR (ALL CURRENT STRIKES)\n1.25',page)
+            self.assertIn('PCR (MATCHED: PRIOR / CURRENT)\n1.34 / 1.18',page)
+            self.assertIn('CALL / PUT OI CHANGE (MATCHED)\n+1,500 / -600',page)
+            self.assertIn('190 matched strikes (prior 190, current 198)',page)
 
     def test_metal_spot_unit_and_after_cutoff_label(self):
         s, review = self.fixtures()

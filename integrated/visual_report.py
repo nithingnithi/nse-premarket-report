@@ -415,6 +415,7 @@ def render_visual(s, review, path):
         row=options.get(name,{})
         usable=row.get('status') in ('PASS','PROVISIONAL','PARTIAL')
         comparable=row.get('status') in ('PASS','PROVISIONAL')
+        matched=row.get('matched_comparison') if row.get('status')=='PARTIAL' else None
         x=M+i*274.5
         v.box(x,498,264.5,148,border=True)
         v.write(name,x+12,509,130,9.5,INK,True)
@@ -428,17 +429,29 @@ def render_visual(s, review, path):
                 if level is not None:
                     return value+' ('+signed(level-dec(cash['close']),0)+' pts)'
             return value
-        metrics=[('PCR',number(row.get('pcr_current'),3) if usable else 'N/A'),
-                 ('PREVIOUS PCR',number(row.get('pcr_previous'),3) if comparable else 'N/A'),
+        pcr_label='PCR (ALL CURRENT STRIKES)' if matched else 'PCR'
+        previous_label='PCR (MATCHED: PRIOR / CURRENT)' if matched else 'PREVIOUS PCR'
+        previous=number(row.get('pcr_previous'),3) if comparable else 'N/A'
+        oi_label='CALL / PUT OI CHANGE'
+        oi_change=(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if comparable else 'N/A'
+        if matched:
+            previous=number(matched.get('pcr_previous'),3)+' / '+number(matched.get('pcr_current'),3)
+            oi_label+=' (MATCHED)'
+            oi_change=signed(matched.get('call_oi_change'),0)+' / '+signed(matched.get('put_oi_change'),0)
+        metrics=[(pcr_label,number(row.get('pcr_current'),3) if usable else 'N/A'),
+                 (previous_label,previous),
                  ('CALL OI WALL',option_level('call_walls')),
                  ('PUT OI WALL',option_level('put_walls')),
                  ('MAX PAIN',option_level('max_pain')),
-                 ('CALL / PUT OI CHANGE',(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if comparable else 'N/A')]
+                 (oi_label,oi_change)]
         for j,(label,value) in enumerate(metrics):
             y=530+j*16
             v.write(label,x+12,y,133,7.1,MUTED)
             v.write(value,x+149,y,103,7.6,AMBER if 'N/A' in value else INK,True)
-        if row.get('status') not in ('PASS','PROVISIONAL'):
+        if matched:
+            v.write(f"Same contract IDs: {matched['strikes']} matched strikes (prior {matched['previous_strikes']}, current {row['strikes']}). Raw OI. Full-chain change withheld.",
+                    x+12,627,240,6.5,AMBER,max_lines=2)
+        elif row.get('status') not in ('PASS','PROVISIONAL'):
             prefix='Current levels only; ' if row.get('status')=='PARTIAL' else 'Reason: '
             v.write(prefix+label_reason(row),x+12,631,240,6.5,AMBER,max_lines=2)
     v.section('Index reference levels',655,'S = support | R = resistance | Traditional daily pivots')
@@ -508,6 +521,8 @@ def render_visual(s, review, path):
             gaps.append((name,label_reason(row)))
     for name,key in (('NIFTY OPTIONS','NIFTY'),('BANK NIFTY OPTIONS','BANKNIFTY')):
         row=options.get(key,{})
+        if row.get('status')=='PARTIAL' and row.get('matched_comparison'):
+            continue  # The option panel states the limits of the matched comparison.
         if row.get('status')=='PARTIAL':
             gaps.append((name.replace('OPTIONS','COMPARISON'),label_reason(row)))
         elif row.get('status') not in ('PASS','PROVISIONAL'):

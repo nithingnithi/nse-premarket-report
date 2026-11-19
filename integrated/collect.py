@@ -9,6 +9,8 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
+from collections import Counter
+from dataclasses import replace
 from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
@@ -57,14 +59,33 @@ def option_summary(old,new,symbol):
         changed=sum(identities[0][k]!=identities[1][k] for k in old_keys & new_keys)
         reason=(f'Contract universe changed: {len(new_keys-old_keys)} added, '
                 f'{len(old_keys-new_keys)} removed, {changed} changed IDs; '
-                'PCR direction and OI change withheld')
-        return clean({'status':'PARTIAL','reason':reason,'expiry':expiry,
+                'full-chain PCR direction and OI change withheld')
+        summary={'status':'PARTIAL','reason':reason,'expiry':expiry,
                       'strikes':len(chains[1].rows),'unit':'UNVERIFIED_RAW',
                       'pcr_previous':None,'pcr_current':current['pcr'],
                       'pcr_direction':None,'call_walls':current['call_walls'],
                       'put_walls':current['put_walls'],
                       'max_pain':current['max_pain_strikes'],
-                      'call_oi_change':None,'put_oi_change':None})
+                      'call_oi_change':None,'put_oi_change':None}
+        if symbol=='BANKNIFTY':
+            old_ids,new_ids=[Counter(ids.values()) for ids in identities]
+            matched=set()
+            for row in chains[1].rows:
+                strike=row.strike
+                if all(ident not in (None,'') and old_ids[ident]==new_ids[ident]==1 and
+                       identities[0].get((strike,side))==ident
+                       for side,ident in ((side,identities[1][strike,side]) for side in ('CE','PE'))):
+                    matched.add(strike)
+            if matched:
+                previous_subset,current_subset=(replace(chain,rows=tuple(row for row in chain.rows
+                                                                         if row.strike in matched)) for chain in chains)
+                paired=compare_options(current_subset,previous_subset,expected_strikes=matched,
+                                       latest_session=new['date'],previous_session=old['date'])
+                summary['matched_comparison']={
+                    'strikes':len(matched),'previous_strikes':len(chains[0].rows),
+                    'pcr_previous':paired['previous']['pcr'],'pcr_current':paired['current']['pcr'],
+                    'call_oi_change':paired['call_oi_change'],'put_oi_change':paired['put_oi_change']}
+        return clean(summary)
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
     return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
 
