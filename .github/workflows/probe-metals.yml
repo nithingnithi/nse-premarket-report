@@ -1,4 +1,4 @@
-name: Probe gold and silver response schema
+name: Probe free spot-metals response schema
 on:
   push:
     branches: [fix/spot-metals]
@@ -12,6 +12,4 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Inspect response shape only
-        env:
-          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: python3 -m integrated.probe_metals

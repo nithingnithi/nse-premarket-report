@@ -1,7 +1,5 @@
-"""Branch-only spot-metals schema probe. No prices, keys or raw replies in logs."""
-import os
+"""Branch-only spot-metals schema probe. No prices or raw replies in logs."""
 import re
-from urllib.parse import urlencode
 from integrated.adapters.extra_data import fetch_json
 
 SAFE_KEY = re.compile(r'[A-Za-z0-9 _./%-]{1,48}\Z')
@@ -21,12 +19,13 @@ def shape(value):
                     'RATE_LIMIT' if any(word in notice for word in ('rate limit', 'requests per day', 'calls per day')) else
                     'KEY_REJECTED' if 'invalid api' in notice else
                     'OTHER_NOTICE' if notice else None)
-        nominal = value.get('nominal')
-        timestamp = value.get('timestamp')
+        nominal = value.get('currency')
+        timestamp = value.get('updatedAt')
         return {'type': 'object', 'keys': safe_keys(value),
                 'notice_category': category,
-                'nominal': nominal if isinstance(nominal, str) and re.fullmatch(r'[A-Za-z0-9 /._-]{1,30}', nominal) else None,
-                'timestamp': timestamp if isinstance(timestamp, str) and re.fullmatch(r'[0-9T: +Z.-]{1,35}', timestamp) else None,
+                'currency': nominal if isinstance(nominal, str) and re.fullmatch(r'[A-Z]{3}', nominal) else None,
+                'symbol': value.get('symbol') if value.get('symbol') in ('XAU','XAG') else None,
+                'updatedAt': timestamp if isinstance(timestamp, str) and re.fullmatch(r'[0-9T: +Z.-]{1,35}', timestamp) else None,
                 'price_type': type(value.get('price')).__name__,
                 'children': {k: safe_keys(value[k]) for k in safe_keys(value)
                              if isinstance(value[k], dict)}}
@@ -37,18 +36,14 @@ def shape(value):
 
 
 def main():
-    key = os.environ.get('ALPHAVANTAGE_API_KEY', '')
-    if not key:
-        raise SystemExit('Alpha Vantage secret is absent; no request sent.')
-    for symbol in ('GOLD', 'SILVER'):
+    for symbol in ('XAU', 'XAG'):
         try:
-            url = 'https://www.alphavantage.co/query?' + urlencode({
-                'function': 'GOLD_SILVER_SPOT', 'symbol': symbol, 'apikey': key})
+            url = 'https://api.gold-api.com/price/' + symbol
             result = shape(fetch_json(url))
         except Exception:
             result = {'type': 'REQUEST_FAILED'}
         print(symbol, result)
-    print('Spot-metal schema probe finished; no report or Telegram send.')
+    print('Gold API schema probe finished; no report or Telegram send.')
 
 
 if __name__ == '__main__':
