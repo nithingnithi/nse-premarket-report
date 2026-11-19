@@ -66,6 +66,49 @@ class VisualReportTests(unittest.TestCase):
             # The fixture lacks D-1 NFO session, so it cannot show a build-up.
             self.assertNotIn('LONG BUILD', reader.pages[1].extract_text())
 
+    def test_current_only_option_levels_and_long_api_reasons_fit(self):
+        s, review = self.fixtures()
+        s['completed_sessions'] = {'NSE':['2026-10-27','2026-10-26'],
+                                   'BSE':['2026-10-27','2026-10-26']}
+        s['spot'] = {'BANKNIFTY':{'status':'PASS','latest_date':'2026-10-27',
+                                  'close':'105','change_pct':'1'}}
+        s['options'] = {'BANKNIFTY':{'status':'PARTIAL','expiry':'2026-10-29',
+                        'pcr_current':'1.25','pcr_previous':None,
+                        'call_walls':['110'],'put_walls':['100'],'max_pain':['105'],
+                        'call_oi_change':None,'put_oi_change':None,
+                        'reason':'Contract universe changed: 16 added, 0 removed, '
+                                 '0 changed IDs; PCR direction and OI change withheld'}}
+        s['extra_data'] = {'adrs':{'Infosys':{'status':'PROVISIONAL','date':'2026-10-27',
+                          'unit':'USD per ADR','change_pct':'1'},
+                          'Wipro':{'status':'UNAVAILABLE',
+                          'reason':'Alpha Vantage ADR quote or symbol missing'}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'visual.pdf'
+            render_visual(s, review, path)
+            pages = PdfReader(path).pages
+            self.assertEqual(len(pages), 3)
+            self.assertIn('Previous-session breadth not collected',pages[0].extract_text())
+            self.assertIn('2026-10-27 EOD; time N/A',pages[0].extract_text())
+            self.assertIn('1.25',pages[1].extract_text())
+            self.assertIn('Current levels only',pages[1].extract_text())
+            self.assertIn('OI change withheld',pages[1].extract_text())
+            self.assertIn('PREVIOUS PCR\nN/A',pages[1].extract_text())
+
+    def test_metal_spot_unit_and_after_cutoff_label(self):
+        s, review = self.fixtures()
+        s['extra_data'] = {'metals':{
+            'GOLD':{'status':'PROVISIONAL','value':'4000','unit':'USD per troy oz',
+                    'asof_IST':'2026-10-28T07:46:00+05:30'},
+            'SILVER':{'status':'PROVISIONAL','value':'50','unit':'wrong unit',
+                      'asof_IST':'2026-10-28T07:44:00+05:30'}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'visual.pdf'
+            render_visual(s, review, path)
+            page = PdfReader(path).pages[0].extract_text()
+            self.assertIn('$4,000', page)
+            self.assertIn('GOLD LIVE 28 Oct 07:46', PdfReader(path).pages[2].extract_text())
+            self.assertNotIn('50\n28 Oct', page)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -258,7 +258,8 @@ def render_visual(s, review, path):
         v.box(310, 415, 245, 12, '#EDF2F7', 6)
         v.box(310, 415, 245*float(adv/(adv+decline)), 12, GREEN, 6)
     else:
-        v.write('N/A: '+label_reason(breadth), 310, 390, 245, 7.5, AMBER, max_lines=2)
+        v.write('N/A: '+(label_reason(breadth) if breadth else 'Previous-session breadth not collected'),
+                310, 390, 245, 7.5, AMBER, max_lines=2)
     v.write('SECTOR MOMENTUM / D', 310, 447, 240, 8, MUTED, True)
     for i,name in enumerate(('PSU Bank','Realty','Auto','FMCG','Energy','IT')):
         row=sectors.get(name,{})
@@ -271,17 +272,19 @@ def render_visual(s, review, path):
         v.write(signed(change)+'%' if change is not None else 'N/A',500,y,55,7.5,
                 color(change) if change is not None else AMBER,True)
 
-    v.section('Global close & cross-assets', 573, 'Mixed sessions; timestamps remain source-specific')
+    v.section('Global markets & cross-assets', 573,
+              'Mixed sessions; metals are USD/troy oz and may be live')
     v.box(M, 592, 264, 111, border=True)
     v.write('OVERSEAS INDICES',M+11,602,240,7.6,MUTED,True)
     global_names=(('DOW','DOW JONES'),('S&P 500','S&P'),('US TECH','US Tech 100'),
                   ('NIKKEI','NIKKEI 225'),('HANG SENG','HANG SENG'),('KOSPI','KOSPI'))
     for i,(label,key) in enumerate(global_names):
-        x=M+11+(i//3)*129;y=623+(i%3)*22
+        x=M+11+(i//3)*129;y=617+(i%3)*27
         row=market(key)
-        v.write(label,x,y,66,6.9,MUTED,True)
+        v.write(label,x,y,120,6.9,MUTED,True)
+        v.write(number(row.get('value')) if row else 'N/A',x,y+10,67,8,INK if row else AMBER,True)
         v.write((signed(row.get('change_pct'))+'%') if row and row.get('change_pct') is not None else 'N/A',
-                x+68,y,53,7.8,color(row.get('change_pct')) if row else AMBER,True)
+                x+69,y+10,54,7.4,color(row.get('change_pct')) if row else AMBER,True)
     v.box(302,592,265,111,border=True)
     v.write('MACRO / FX / COMMODITIES',313,602,240,7.6,MUTED,True)
     macro=[('US 10Y',extra.get('us_10y',{}),'%'),('BRENT',market('Oil (Brent)'),'USD'),
@@ -291,11 +294,22 @@ def render_visual(s, review, path):
     for i,(label,row,unit) in enumerate(macro):
         x=313+(i//3)*126;y=623+(i%3)*22
         raw=row.get('value') if row else None
-        valid=raw is not None and (row.get('status') in ('PASS','PROVISIONAL'))
+        amount=dec(raw)
+        valid=(amount is not None and amount>0 and row.get('status') in ('PASS','PROVISIONAL')) if row else False
+        if label in ('GOLD','SILVER') and row:
+            valid=valid and row.get('unit')=='USD per troy oz'
+            try:
+                observed=dt.datetime.fromisoformat(row['asof_IST'])
+                valid=valid and observed.tzinfo is not None
+            except (KeyError,ValueError,TypeError):
+                valid=False
+        if label=='US 10Y' and row:
+            valid=valid and row.get('unit')=='%'
         v.write(label,x,y,55,6.8,MUTED,True)
-        v.write(number(raw) if valid else 'N/A',x+58,y,61,7.6,INK if valid else AMBER,True)
+        displayed=(('$' if label in ('GOLD','SILVER') else '')+number(raw)+('%' if unit=='%' else '')) if valid else 'N/A'
+        v.write(displayed,x+58,y,61,7.6,INK if valid else AMBER,True)
     v.section('US-listed ADRs',714,'US EOD; no implied NSE premium')
-    v.box(M,732,W-2*M,59,border=True)
+    v.box(M,732,W-2*M,63,border=True)
     for i,name in enumerate(('Infosys','Wipro','ICICI Bank','HDFC Bank')):
         x=M+i*(W-2*M)/4
         if i:v.line(x,740,x,783)
@@ -304,8 +318,10 @@ def render_visual(s, review, path):
         v.write(name.upper(),x+9,743,115,7.2,MUTED,True)
         v.write(signed(row.get('change_pct'))+'%' if valid and row.get('change_pct') is not None else 'N/A',
                 x+9,759,115,13,color(row.get('change_pct')) if valid else AMBER,True)
-        v.write(('As of '+stamp(row.get('asof_IST'))) if valid else label_reason(row),
-                x+9,779,115,6.2,MUTED if valid else AMBER,max_lines=1)
+        adr_time=(('As of '+stamp(row.get('asof_IST'))) if row.get('asof_IST') else
+                  (str(row.get('date') or 'Date N/A')+' EOD; time N/A'))
+        v.write(adr_time if valid else label_reason(row),
+                x+9,779,115,6.2,MUTED if valid else AMBER,max_lines=2)
     v.c.showPage()
 
     # PAGE 2: flows, options, reference levels
@@ -381,23 +397,25 @@ def render_visual(s, review, path):
     v.section('Option chain / expiry-specific',478,'No mixed expiry or invalid-chain calculations')
     for i,name in enumerate(('NIFTY','BANKNIFTY')):
         row=options.get(name,{})
-        usable=row.get('status') in ('PASS','PROVISIONAL')
+        usable=row.get('status') in ('PASS','PROVISIONAL','PARTIAL')
+        comparable=row.get('status') in ('PASS','PROVISIONAL')
         x=M+i*274.5
         v.box(x,498,264.5,148,border=True)
         v.write(name,x+12,509,130,9.5,INK,True)
         v.write('EXP '+str(row.get('expiry') or 'N/A'),x+145,511,108,7,MUTED,True)
         metrics=[('PCR',number(row.get('pcr_current'),3) if usable else 'N/A'),
-                 ('PREVIOUS PCR',number(row.get('pcr_previous'),3) if usable else 'N/A'),
+                 ('PREVIOUS PCR',number(row.get('pcr_previous'),3) if comparable else 'N/A'),
                  ('CALL OI WALL',number(row.get('call_walls'),0) if usable else 'N/A'),
                  ('PUT OI WALL',number(row.get('put_walls'),0) if usable else 'N/A'),
                  ('MAX PAIN',number(row.get('max_pain'),0) if usable else 'N/A'),
-                 ('CALL / PUT OI CHANGE',(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if usable else 'N/A')]
+                 ('CALL / PUT OI CHANGE',(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if comparable else 'N/A')]
         for j,(label,value) in enumerate(metrics):
             y=530+j*16
             v.write(label,x+12,y,133,7.1,MUTED)
             v.write(value,x+149,y,103,7.6,AMBER if 'N/A' in value else INK,True)
         if row.get('status') not in ('PASS','PROVISIONAL'):
-            v.write('Reason: '+label_reason(row),x+12,631,240,6.5,AMBER,max_lines=2)
+            prefix='Current levels only; ' if row.get('status')=='PARTIAL' else 'Reason: '
+            v.write(prefix+label_reason(row),x+12,631,240,6.5,AMBER,max_lines=2)
     v.section('Index reference levels',655,'OI walls and distance from D close; no price forecast')
     v.box(M,674,W-2*M,117,border=True)
     for i,(name,key) in enumerate((('NIFTY 50','NIFTY'),('BANK NIFTY','BANKNIFTY'))):
@@ -407,7 +425,7 @@ def render_visual(s, review, path):
         cash=daily(key)
         v.write(name,x,685,245,8.5,INK,True)
         for j,(label,field) in enumerate((('PUT WALL','put_walls'),('CALL WALL','call_walls'),('MAX PAIN','max_pain'))):
-            levels=(row.get(field) or []) if row.get('status') in ('PASS','PROVISIONAL') else []
+            levels=(row.get(field) or []) if row.get('status') in ('PASS','PROVISIONAL','PARTIAL') else []
             one=levels[0] if isinstance(levels,list) and len(levels)==1 else None
             level=dec(one)
             distance=level-dec(cash['close']) if level is not None and cash else None
@@ -433,13 +451,13 @@ def render_visual(s, review, path):
         source=story.get('source') or urlsplit(story.get('url') or '').hostname or 'Source N/A'
         v.write(str(source)+' / '+stamp(story.get('published_IST')),x+11,y+10,240,6.7,BLUE,True,max_lines=2)
         v.write(story.get('title') or 'N/A: headline missing',x+11,y+25,240,8,INK,True,max_lines=3,url=story.get('url'))
-    v.section('Catalyst calendar / IST',482,'Only saved and dated events')
-    v.box(M,501,W-2*M,122,border=True)
+    v.section('Catalyst calendar / IST',472,'Only saved and dated events')
+    v.box(M,490,W-2*M,93,border=True)
     calendar=s.get('calendar',[])[:4]
     india=s.get('today_india',[])[:2]
     events=(calendar+india)[:6]
     for i in range(6):
-        x=M+12+(i//3)*266;y=510+(i%3)*35
+        x=M+12+(i//3)*266;y=497+(i%3)*28
         if i and i%3:v.line(x,y-5,x+246,y-5)
         if i>=len(events):
             if i==len(events):v.write('N/A: '+str(s.get('calendar_note') or 'No further validated events'),x,y,245,7,AMBER,max_lines=3)
@@ -447,33 +465,56 @@ def render_visual(s, review, path):
         item=events[i]
         v.write(item.get('title') or 'N/A',x,y,245,8,INK,True,max_lines=2,url=item.get('url'))
         v.write(stamp(item.get('scheduled_IST')) if item.get('scheduled_IST') else str(item.get('date_IST') or 'Time N/A'),
-                x,y+18,245,7,BLUE)
-    v.section('N/A / source watchlist',633,'Important unavailable fields and exact reasons')
+                x,y+16,245,7,BLUE)
+    v.section('N/A / source watchlist',590,'Important unavailable fields and exact reasons')
     gaps=[]
     for name in ('GIFT NIFTY','USD INR','Oil (Brent)','NIKKEI 225','HANG SENG','KOSPI'):
-        if market(name) is None:gaps.append((name,label_reason(markets.get(name,{}))))
+        if market(name) is None:
+            gaps.append((name,label_reason(markets[name]) if name in markets else 'No configured provider observation'))
     for name in ('GOLD','SILVER'):
         row=extra.get('metals',{}).get(name,{})
         if row.get('status') not in ('PASS','PROVISIONAL'):
             gaps.append((name,label_reason(row)))
     for name,key in (('NIFTY OPTIONS','NIFTY'),('BANK NIFTY OPTIONS','BANKNIFTY')):
         row=options.get(key,{})
-        if row.get('status') not in ('PASS','PROVISIONAL'):
+        if row.get('status')=='PARTIAL':
+            gaps.append((name.replace('OPTIONS','COMPARISON'),label_reason(row)))
+        elif row.get('status') not in ('PASS','PROVISIONAL'):
             gaps.append((name,label_reason(row)))
     for name in ('FII cash','DII cash','FII index-futures positions'):
         row=flows.get(name,{})
         if row.get('status')!='PASS':gaps.append((name.upper(),label_reason(row)))
+    for name in ('Infosys','Wipro','ICICI Bank','HDFC Bank'):
+        row=extra.get('adrs',{}).get(name,{})
+        if row.get('status') not in ('PASS','PROVISIONAL'):
+            gaps.append((name.upper()+' ADR',label_reason(row)))
     corporate=s.get('india_corporate_events')
     if not corporate or str(corporate).startswith('N/A'):
         gaps.append(('CORPORATE EVENTS',str(corporate or 'No validated official source')))
-    v.box(M,652,W-2*M,100,border=True)
+    v.box(M,609,W-2*M,133,border=True)
     for i,(name,why) in enumerate(gaps[:8]):
-        x=M+9+(i%4)*132;y=661+(i//4)*45
-        v.write(name,x,y,123,7,INK,True,max_lines=2)
-        v.write('N/A',x,y+15,123,11,AMBER,True)
-        v.write(why,x,y+30,123,6.2,MUTED,max_lines=2)
-    if not gaps:v.write('No monitored gaps in this saved snapshot.',M+12,674,500,9,GREEN)
-    if len(gaps)>8:v.write(f'+{len(gaps)-8} more unavailable fields in source snapshot',M+10,743,510,6.5,AMBER)
-    v.box(M,760,W-2*M,32,NAVY,8)
-    v.write('VALIDITY: saved source time + status + reason; missing never becomes zero.',M+11,769,517,7.4,'#FFFFFF',True)
+        x=M+10+(i//4)*266;y=618+(i%4)*30
+        v.write(name+' — N/A',x,y,245,7.3,AMBER,True,max_lines=1)
+        v.write(why,x,y+11,245,6.3,MUTED,max_lines=2)
+    if not gaps:v.write('No monitored gaps in this saved snapshot.',M+12,636,500,9,GREEN)
+    v.box(M,750,W-2*M,42,NAVY,8)
+    v.write('VALIDITY: saved source time + status + reason; missing never becomes zero.',M+11,759,517,7.4,'#FFFFFF',True)
+    clocks=[]
+    for label,key in (('Dow','DOW JONES'),('Nikkei','NIKKEI 225'),
+                      ('Brent','Oil (Brent)'),('USD/INR','USD INR')):
+        row=market(key)
+        if row:
+            try:clocks.append(label+' '+dt.datetime.fromisoformat(row['asof']).strftime('%d %b %H:%M'))
+            except (KeyError,ValueError,TypeError):pass
+    if extra.get('us_10y',{}).get('status')=='PROVISIONAL':
+        clocks.append('US10Y '+str(extra['us_10y'].get('date') or 'date N/A')+' EOD')
+    for label in ('GOLD','SILVER'):
+        row=extra.get('metals',{}).get(label,{})
+        if row.get('status')=='PROVISIONAL':
+            try:
+                observed=dt.datetime.fromisoformat(row['asof_IST'])
+                clocks.append(label+(' LIVE ' if observed>cutoff else ' ')+observed.strftime('%d %b %H:%M'))
+            except (KeyError,ValueError,TypeError):pass
+    if len(gaps)>8:clocks.append(str(len(gaps)-8)+' further unavailable fields')
+    v.write(' | '.join(clocks) or 'Source times unavailable',M+11,773,517,6.3,'#D8E3F1',max_lines=2)
     v.c.save()
