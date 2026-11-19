@@ -22,7 +22,7 @@ ENDPOINT = "https://api.marketaux.com/v1/news/all"
 CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-news report)"
 QUERIES = (
     ("India market entities", {"search": '(Nifty | Sensex | NSE | BSE | FII | DII | rupee | "Indian equities" | "Indian stocks")'}),
-    ("India macro keywords", {"search": 'SEBI | RBI | "margin trading facility" | (India + (inflation | GDP | earnings | IPO | exports))'}),
+    ("India macro keywords", {"search": 'SEBI | RBI | "margin trading facility" | "State Bank of India" | SBIN | (India + (inflation | GDP | earnings | IPO | exports))'}),
     ("Global macro keywords", {"search": '"Federal Reserve" | FOMC | "Treasury yields" | "US inflation" | "US jobs" | OPEC | "oil prices" | tariffs'}),
 )
 MAX_PAGES = 40  # Unmet provider pagination stays PARTIAL at either bounded limit.

@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 IST = ZoneInfo("Asia/Kolkata")
 INDICES = {"Nifty": "NSE_INDEX|Nifty 50", "Bank Nifty": "NSE_INDEX|Nifty Bank",
            "India VIX": "NSE_INDEX|India VIX"}
-PATHS = {"/market-quote/quotes", "/news"}
+PATHS = {"/market-quote/quotes", "/news", "/fundamentals/INE062A01020/corporate-actions"}
 CLIENT_IDENTITY = "NSEMorningReport/0.1 (personal read-only market-data report)"
 
 
@@ -408,7 +408,7 @@ def news_link(value):
         raise CheckFailure("News link is malformed.") from None
 
 
-def news_page(payload, page, now):
+def news_page(payload, page, now, *, instrument_keys=NEWS_KEYS):
     if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
         raise CheckFailure("News response does not contain an instrument map.")
     metadata = payload.get("metadata", {}).get("page") if isinstance(payload.get("metadata"), dict) else None
@@ -423,7 +423,7 @@ def news_page(payload, page, now):
         raise CheckFailure("News pagination coverage is inconsistent.")
     articles = []
     for key, rows in payload["data"].items():
-        if key not in NEWS_KEYS or not isinstance(rows, list):
+        if key not in instrument_keys or not isinstance(rows, list):
             raise CheckFailure("News contains an unrequested instrument or invalid article array.")
         for row in rows:
             if not isinstance(row, dict):

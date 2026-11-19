@@ -11,7 +11,7 @@ import urllib.request
 import urllib.parse
 from collections import Counter
 from dataclasses import replace
-from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data, metals
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data, metals, sbi
 from integrated.adapters.corporate_events import reviewed_events
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
@@ -347,6 +347,8 @@ def main():
             compact['calendar']=[{k:r.get(k) for k in fields} for r in us_events[:6]]
             compact['today_india']=[{k:r.get(k) for k in fields} for r in india_events[:4]]
             compact['india_corporate_events']=reviewed_events(str(day))
+            compact['sbi'] = sbi.run(gapi if not isinstance(gapi, dict) else None, cutoff,
+                                     fallback=n.get('articles', []))
             compact['calendar_note']=(next((row.get('reason') for row in c.get('checks',[]) if row.get('status') in ('FAIL','BLOCKED')),None)
                                       or 'No whitelisted release in the next seven days')
             compact['calendar_status']='PARTIAL'

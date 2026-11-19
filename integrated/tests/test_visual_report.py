@@ -32,6 +32,27 @@ class VisualReportTests(unittest.TestCase):
             self.assertIn('SYNTHETIC FIXTURE', pages[0].extract_text())
         self.assertEqual(json.dumps(s['score'], sort_keys=True), before)
 
+    def test_sbi_news_and_upcoming_event_in_existing_report(self):
+        s, review = self.fixtures()
+        s['sbi'] = {
+            'news': {'status': 'PASS', 'articles': [{'title': 'SBI fixture headline',
+                'published_IST': '2026-10-28T07:00:00+05:30',
+                'url': 'https://upstox.com/news/fixture/'}]},
+            'actions': {'status': 'PASS', 'upcoming': []},
+            'filings': {'board_meetings': {'status': 'PASS', 'upcoming': [
+                {'date': '2026-10-30', 'title': 'SBI board meeting',
+                 'url': 'https://nsearchives.nseindia.com/corporate/SBIN_fixture.pdf'}]}},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'visual.pdf'
+            render_visual(s, review, path)
+            pages = PdfReader(path).pages
+            self.assertEqual(len(pages), 3)
+            page = pages[2].extract_text()
+            self.assertIn('SBI fixture headline', page)
+            self.assertIn('SBI board meeting', page)
+            self.assertIn('2026-10-30', page)
+
     def test_missing_reasons_and_after_cutoff_quotes(self):
         s, review = self.fixtures()
         s['global'] = [{'name':'GIFT NIFTY','status':'AFTER CUTOFF','value':99999,
