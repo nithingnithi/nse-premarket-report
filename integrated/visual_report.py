@@ -519,7 +519,18 @@ def render_visual(s, review, path):
         v.write(item.get('title') or 'N/A',x,y,245,8,INK,True,max_lines=2,url=item.get('url'))
         v.write(stamp(item.get('scheduled_IST')) if item.get('scheduled_IST') else str(item.get('date_IST') or 'Time N/A'),
                 x,y+16,245,7,BLUE)
-    v.section('N/A / source watchlist',590,'Important unavailable fields and exact reasons')
+    corporate=s.get('india_corporate_events')
+    filings=corporate.get('items',[])[:4] if (isinstance(corporate,dict)
+            and corporate.get('status')=='REVIEWED' and corporate.get('date_IST')==s['report_date']) else []
+    if filings:
+        v.section('Indian corporate events',590,'Selected official filings for this report date')
+        v.box(M,607,W-2*M,69,border=True)
+        for i,item in enumerate(filings):
+            x=M+11+(i%2)*266;y=614+(i//2)*30
+            v.write(item['kind'].upper(),x,y,245,6.5,BLUE,True)
+            v.write(item['title']+' | '+item['note'],x,y+10,245,7.6,INK,True,
+                    max_lines=2,url=item['url'])
+    v.section('N/A / source watchlist',681 if filings else 590,'Important unavailable fields and exact reasons')
     gaps=[]
     for name in ('GIFT NIFTY','USD INR','Oil (Brent)','NIKKEI 225','HANG SENG','KOSPI'):
         if market(name) is None:
@@ -544,15 +555,22 @@ def render_visual(s, review, path):
         row=extra.get('adrs',{}).get(name,{})
         if row.get('status') not in ('PASS','PROVISIONAL'):
             gaps.append((name.upper()+' ADR',label_reason(row)))
-    corporate=s.get('india_corporate_events')
-    if not corporate or str(corporate).startswith('N/A'):
-        gaps.append(('CORPORATE EVENTS',str(corporate or 'No validated official source')))
-    v.box(M,609,W-2*M,133,border=True)
-    for i,(name,why) in enumerate(gaps[:8]):
-        x=M+10+(i//4)*266;y=618+(i%4)*30
-        v.write(name+' — N/A',x,y,245,7.3,AMBER,True,max_lines=1)
-        v.write(why,x,y+11,245,6.3,MUTED,max_lines=2)
-    if not gaps:v.write('No monitored gaps in this saved snapshot.',M+12,636,500,9,GREEN)
+    if not filings:
+        why=label_reason(corporate) if isinstance(corporate,dict) else str(corporate or 'No reviewed official filing')
+        gaps.append(('CORPORATE EVENTS',why))
+    gap_limit=4 if filings else 8
+    if filings:
+        v.box(M,698,W-2*M,44,border=True)
+        for i,(name,why) in enumerate(gaps[:gap_limit]):
+            x=M+10+(i%2)*266;y=704+(i//2)*17
+            v.write(name+' — '+why,x,y,245,6.4,AMBER,max_lines=2)
+    else:
+        v.box(M,609,W-2*M,133,border=True)
+        for i,(name,why) in enumerate(gaps[:gap_limit]):
+            x=M+10+(i//4)*266;y=618+(i%4)*30
+            v.write(name+' — N/A',x,y,245,7.3,AMBER,True,max_lines=1)
+            v.write(why,x,y+11,245,6.3,MUTED,max_lines=2)
+    if not gaps:v.write('No monitored gaps in this saved snapshot.',M+12,708 if filings else 636,500,9,GREEN)
     v.box(M,750,W-2*M,42,NAVY,8)
     v.write('VALIDITY: saved source time + status + reason; missing never becomes zero.',M+11,759,517,7.4,'#FFFFFF',True)
     clocks=[]
@@ -566,6 +584,6 @@ def render_visual(s, review, path):
         clocks.append('US10Y '+str(extra['us_10y'].get('date') or 'date N/A')+' EOD')
     for label,observed in metal_times.items():
         clocks.append(label+(' LIVE ' if observed>cutoff else ' ')+observed.strftime('%d %b %H:%M'))
-    if len(gaps)>8:clocks.append(str(len(gaps)-8)+' further unavailable fields')
+    if len(gaps)>gap_limit:clocks.append(str(len(gaps)-gap_limit)+' further unavailable fields')
     v.write(' | '.join(clocks) or 'Source times unavailable',M+11,773,517,6.3,'#D8E3F1',max_lines=2)
     v.c.save()

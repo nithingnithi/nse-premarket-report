@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from integrated.adapters.corporate_events import reviewed_events
 from integrated.brief_v3 import traditional_pivots
 from integrated.visual_report import render_visual
 
@@ -143,6 +144,28 @@ class VisualReportTests(unittest.TestCase):
             stale = PdfReader(path).pages[1].extract_text()
             self.assertIn('SENSEX\nS N/A', stale)
             self.assertNotIn('1,200', stale)
+
+    def test_reviewed_corporate_events_require_prior_filing_and_exact_report_date(self):
+        snapshot, review = self.fixtures()
+        day = snapshot['report_date']
+        event = {'kind':'IPO opens','title':'Fixture Industries','note':'Bidding opens today',
+                 'announced_on':'2026-10-27','url':'https://www.sebi.gov.in/filings/example'}
+        with tempfile.TemporaryDirectory() as directory:
+            calendar = Path(directory)/'corporate.json'
+            calendar.write_text(json.dumps({day:[event,{**event,'title':'Late fixture','announced_on':day}]}))
+            result = reviewed_events(day,calendar)
+            self.assertEqual(result['status'],'REVIEWED')
+            self.assertEqual(len(result['items']),1)
+            self.assertEqual(reviewed_events('2026-10-29',calendar)['status'],'UNAVAILABLE')
+            snapshot['india_corporate_events']=result
+            path=Path(directory)/'visual.pdf'
+            render_visual(snapshot,review,path)
+            page=PdfReader(path).pages[2]
+            self.assertIn('INDIAN CORPORATE EVENTS',page.extract_text())
+            self.assertIn('Fixture Industries',page.extract_text())
+            self.assertNotIn('Late fixture',page.extract_text())
+            self.assertNotIn('CORPORATE EVENTS — N/A',page.extract_text())
+            self.assertIn(event['url'],[a.get_object()['/A']['/URI'] for a in page['/Annots']])
 
 
 if __name__ == '__main__':
