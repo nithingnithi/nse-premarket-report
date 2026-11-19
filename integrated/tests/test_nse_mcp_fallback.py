@@ -5,11 +5,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from pypdf import PdfReader
 from integrated.adapters import nse_mcp
 from integrated.collect import supplement_nse_indices
+from integrated.deliver import with_breadth
 from integrated.render import render
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -26,6 +28,32 @@ def payload():
 
 
 class MCPFallbackTests(unittest.TestCase):
+    def test_breadth_calls_the_documented_tool_and_rejects_fallback_date(self):
+        data={'date':SESSIONS[0],'advances':10,'declines':20,'unchanged':1,'total_stocks':31}
+        with patch.object(nse_mcp,'Client') as client:
+            instance=client.return_value
+            instance.call_tool.return_value=data
+            self.assertEqual(nse_mcp.fetch_breadth(SESSIONS[0],CUTOFF),{'status':'PASS',**data})
+            client.assert_called_once_with(url=nse_mcp.BHAVCOPY_URL,timeout=3)
+            instance.call_tool.assert_called_once_with('get_market_breadth',{'date':SESSIONS[0]})
+            instance.close.assert_called_once()
+        for bad,reason in (({'date':SESSIONS[1]},'different trading session'),
+                           ({'total_stocks':32},'counts missing or inconsistent'),
+                           ({'advances':True},'counts missing or inconsistent')):
+            with self.assertRaisesRegex(nse_mcp.CheckFailure,reason):
+                nse_mcp.validate_breadth({**data,**bad},SESSIONS[0])
+
+    def test_breadth_is_opt_in_and_leaves_the_saved_snapshot_alone(self):
+        snapshot={'completed_sessions':{'NSE':SESSIONS},'cutoff_IST':CUTOFF.isoformat()}
+        with patch.object(nse_mcp,'fetch_breadth',side_effect=nse_mcp.CheckFailure('Provider unavailable')) as fetch:
+            self.assertIs(with_breadth(snapshot,enabled=True,dry=True),snapshot)
+            self.assertIs(with_breadth(snapshot,enabled=False,dry=False),snapshot)
+            fetch.assert_not_called()
+            report=with_breadth(snapshot,enabled=True,dry=False)
+            fetch.assert_called_once_with(SESSIONS[0],CUTOFF)
+            self.assertEqual(report['breadth'],{'status':'UNAVAILABLE','reason':'Provider unavailable'})
+            self.assertNotIn('breadth',snapshot)
+
     def test_only_exact_previous_session_is_used(self):
         rows = nse_mcp.validate_indices(payload(), SESSIONS, CUTOFF, SESSION_CLOSE)
         self.assertEqual(rows["MIDCAP100"]["close"], "110")

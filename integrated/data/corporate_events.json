@@ -1,0 +1,32 @@
+{
+  "2026-11-19": [
+    {
+      "kind": "IPO opens",
+      "title": "Mahanadi Coalfields",
+      "note": "Bidding closes 23 Nov",
+      "announced_on": "2026-11-13",
+      "url": "https://www.sebi.gov.in/sebi_data/attachdocs/nov-2026/1794811073968.pdf"
+    },
+    {
+      "kind": "Results meeting",
+      "title": "Antarctica Ltd (ANTGRAPHIC)",
+      "note": "Board to consider Q2 and half-year results",
+      "announced_on": "2026-11-12",
+      "url": "https://nsearchives.nseindia.com/corporate/ANTGRAPHIC_12112026213021_Prior_BM_Intimation_Final.pdf"
+    },
+    {
+      "kind": "Dividend ex-date",
+      "title": "Ingersoll Rand (India)",
+      "note": "₹20 interim dividend per share",
+      "announced_on": "2026-11-06",
+      "url": "https://nsearchives.nseindia.com/corporate/INGERRAND1_06112026192052_Record_date_intimation.pdf"
+    },
+    {
+      "kind": "Dividend ex-date",
+      "title": "Natco Pharma",
+      "note": "₹1.25 interim dividend per share",
+      "announced_on": "2026-11-14",
+      "url": "https://nsearchives.nseindia.com/corporate/NATCOPHARM_14112026165635_PaperPublications.pdf"
+    }
+  ]
+}

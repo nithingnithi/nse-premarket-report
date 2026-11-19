@@ -1,8 +1,4 @@
-"""Read-only NSE CM MCP fallback for dated cash-index closes.
-
-The documented streamable-HTTP endpoint is used only after Upstox misses an
-NSE index. A Codex plugin connection is not shared with GitHub Actions.
-"""
+"""Read-only NSE MCP access for dated cash-index closes and Bhavcopy breadth."""
 import datetime as dt
 import http.cookiejar
 import json
@@ -14,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 IST = ZoneInfo("Asia/Kolkata")
 URL = "https://mcp.nseindia.in/cmmkt/mcp"
+BHAVCOPY_URL = "https://mcp.nseindia.in/bhavcopy/cm/mcp"
 MAX_BODY = 2_000_000
 TARGETS = {
     "NIFTY": "NIFTY 50", "BANKNIFTY": "NIFTY BANK",
@@ -77,9 +74,11 @@ def _reply(response, request_id):
 
 
 class Client:
-    def __init__(self, opener=None):
+    def __init__(self, opener=None, *, url=URL, timeout=15):
         self.opener = opener or urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), NoRedirect())
+        self.url = url
+        self.timeout = timeout
         self.session = None
         self.version = None
         self.request_id = 0
@@ -97,10 +96,10 @@ class Client:
             headers["Mcp-Session-Id"] = self.session
         if self.version:
             headers["MCP-Protocol-Version"] = self.version
-        request = urllib.request.Request(URL, data=json.dumps(message).encode(),
+        request = urllib.request.Request(self.url, data=json.dumps(message).encode(),
                                          headers=headers, method="POST")
         try:
-            with self.opener.open(request, timeout=15) as response:
+            with self.opener.open(request, timeout=self.timeout) as response:
                 if method == "initialize":
                     self.session = response.headers.get("Mcp-Session-Id")
                 if notification:
@@ -117,6 +116,9 @@ class Client:
             raise CheckFailure("NSE MCP connection or TLS request failed") from None
 
     def indices(self):
+        return self.call_tool("cm_get_live_indices", {"group": "all", "nameFilter": ""})
+
+    def call_tool(self, name, arguments):
         initialized = self.send("initialize", {
             "protocolVersion": "2025-03-26", "capabilities": {},
             "clientInfo": {"name": "NSEMorningReport", "version": "0.1"},
@@ -125,32 +127,31 @@ class Client:
         if self.version not in ("2025-03-26", "2025-06-18", "2025-11-25"):
             raise CheckFailure("NSE MCP protocol version is unsupported")
         self.send("notifications/initialized", notification=True)
-        result = self.send("tools/call", {"name": "cm_get_live_indices",
-                                          "arguments": {"group": "all", "nameFilter": ""}})
+        result = self.send("tools/call", {"name": name, "arguments": arguments})
         if result.get("isError"):
-            raise CheckFailure("NSE MCP index tool returned an error")
+            raise CheckFailure("NSE data tool returned an error")
         data = result.get("structuredContent")
         if not isinstance(data, dict):
             blocks = result.get("content")
             texts = [x.get("text") for x in blocks if isinstance(x, dict)
                      and x.get("type") == "text"] if isinstance(blocks, list) else []
             if len(texts) != 1 or not isinstance(texts[0], str):
-                raise CheckFailure("NSE MCP index payload was missing")
+                raise CheckFailure("NSE data payload was missing")
             try:
                 data = json.loads(texts[0])
             except (ValueError, UnicodeError):
-                raise CheckFailure("NSE MCP index payload was not JSON") from None
+                raise CheckFailure("NSE data payload was not JSON") from None
         return data
 
     def close(self):
         if not self.session:
             return
-        request = urllib.request.Request(URL, method="DELETE", headers={
+        request = urllib.request.Request(self.url, method="DELETE", headers={
             "Mcp-Session-Id": self.session,
             "MCP-Protocol-Version": self.version or "2025-03-26",
         })
         try:
-            with self.opener.open(request, timeout=5):
+            with self.opener.open(request, timeout=min(5, self.timeout)):
                 pass
         except Exception:
             pass  # Session cleanup cannot change the data result.
@@ -231,5 +232,34 @@ def fetch_indices(sessions, cutoff, session_close):
     client = Client()
     try:
         return validate_indices(client.indices(), sessions, cutoff, session_close)
+    finally:
+        client.close()
+
+
+def validate_breadth(payload, session):
+    if not isinstance(payload, dict) or any(payload.get(k) for k in ('error','warning','warnings')):
+        raise CheckFailure('NSE Bhavcopy breadth response unavailable')
+    if not session or payload.get('date') != session:
+        raise CheckFailure('NSE Bhavcopy returned a different trading session')
+    names = ('advances', 'declines', 'unchanged', 'total_stocks')
+    counts = {key: payload.get(key) for key in names}
+    if (any(type(count) is not int or count < 0 for count in counts.values())
+            or not counts['total_stocks']
+            or sum(counts[key] for key in names[:3]) != counts['total_stocks']):
+        raise CheckFailure('NSE Bhavcopy breadth counts missing or inconsistent')
+    return {'status':'PASS', 'date':session, **counts}
+
+
+def fetch_breadth(session, cutoff):
+    """Request only the established prior NSE date and reject holiday fallback."""
+    try:
+        date = dt.date.fromisoformat(session)
+    except (TypeError, ValueError):
+        raise CheckFailure('Previous NSE session date unavailable') from None
+    if session != date.isoformat() or date >= cutoff.astimezone(IST).date():
+        raise CheckFailure('Previous NSE session date unavailable')
+    client = Client(url=BHAVCOPY_URL, timeout=3)
+    try:
+        return validate_breadth(client.call_tool('get_market_breadth', {'date':session}), session)
     finally:
         client.close()

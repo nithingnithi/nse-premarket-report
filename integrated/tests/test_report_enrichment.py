@@ -46,6 +46,7 @@ class ReportEnrichmentTests(unittest.TestCase):
         api=FakeAPI();cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
         row=index_daily(api,flows.INDICES['Sensex'],['2026-11-17','2026-11-16'],cutoff,'BSE')
         self.assertEqual((row['close'],row['change_pct']),('202','1'))
+        self.assertEqual((row['high'],row['low'],row['source']),('203','199','Upstox daily candle'))
         self.assertIn('BSE_INDEX%7CSENSEX',api.path)
         with self.assertRaisesRegex(flows.CheckFailure,'Two completed BSE sessions'):
             index_daily(api,flows.INDICES['Sensex'],['2026-11-17'],cutoff,'BSE')
@@ -99,7 +100,7 @@ class ReportEnrichmentTests(unittest.TestCase):
         self.assertEqual(row['status'],'UNAVAILABLE')
         self.assertIn('access was rejected',row['reason'])
 
-    def test_new_bank_nifty_strike_keeps_current_levels_but_withholds_change(self):
+    def test_new_bank_nifty_strike_keeps_current_levels_and_compares_matching_contracts(self):
         expiry = '2026-11-17'
         def row(strike, side, ident, oi):
             return {'FinInstrmTp': 'IDO', 'XpryDt': expiry, 'StrkPric': str(strike),
@@ -118,6 +119,11 @@ class ReportEnrichmentTests(unittest.TestCase):
         self.assertIsNone(result['pcr_previous'])
         self.assertIsNone(result['pcr_direction'])
         self.assertIsNone(result['call_oi_change'])
+        self.assertEqual(result['matched_comparison'],{
+            'strikes':1,'previous_strikes':1,'pcr_previous':'1.5','pcr_current':'1.4',
+            'call_oi_change':5,'put_oi_change':5})
+        new['data'][0]['source_rows'][1]['FinInstrmId']=5
+        self.assertNotIn('matched_comparison',option_summary(old,new,'BANKNIFTY'))
 
     def test_global_prior_close_and_after_cutoff_are_distinct(self):
         cutoff = dt.datetime(2026, 11, 16, 7, 45, tzinfo=IST)

@@ -13,6 +13,17 @@ def finite_positive(value):
     except (InvalidOperation, TypeError, ValueError):
         return None
 
+def traditional_pivots(high, low, close):
+    """Return S1–S3 and R1–R3 from a completed session's H/L/C."""
+    high, low, close = map(finite_positive, (high, low, close))
+    if None in (high, low, close) or low >= high or not low <= close <= high:
+        return None
+    pivot = (high + low + close) / 3
+    spread = high - low
+    support = (2 * pivot - high, pivot - spread, low - 2 * (high - pivot))
+    resistance = (2 * pivot - low, pivot + spread, high + 2 * (pivot - low))
+    return (support, resistance) if support[-1] > 0 else None
+
 def futures_point(rows, sessions):
     """Nifty's nearest selected future, same instrument/expiry on D and D-1."""
     matches = [r for r in rows if r.get('check') == 'NIFTY futures']
@@ -58,38 +69,50 @@ def vix_flag(daily):
         return 'UNKNOWN'
     return 'CAUTION' if level >= VIX_LEVEL_CAUTION or change >= VIX_CHANGE_CAUTION_PCT else 'NORMAL'
 
-INDIA_TERMS = ('nifty', 'sensex', 'rbi', 'rupee', 'fii', 'reliance', 'hdfc',
-               'icici', 'infosys', 'tcs', 'adani', 'bajaj finance',
-               'indian equities', 'indian stocks')
-GLOBAL_TERMS = ('fed', 'fomc', 'treasury', 'us yield', 'crude', 'brent', 'opec', 'oil', 'tariff', 'geopolit')
-UNRELATED_TERMS = ('personal finance', 'credit card', 'mortgage', 'lottery', 'celebrity',
-                   'real estate tips', 'oil indicators', 'reservoir discovery', 'drilling site')
+INDIA_MARKETS = re.compile(
+    r'\b(?:nifty|sensex|sebi|rbi|nse|bse|rupee|fiis?|diis?|fpis?|'
+    r'reliance industries|hdfc|icici|infosys|tcs|adani|bajaj finance|'
+    r'indian (?:equities|stocks|shares|markets?|banks?|economy|inflation))\b')
+INDIA_CONTEXT = re.compile(r'\b(?:india|indian)\b')
+MARKET_CONTEXT = re.compile(
+    r'\b(?:equities|stocks|shares|markets?|inflation|gdp|earnings|ipo|'
+    r'fiscal|exports?|regulator|bonds?|overweight|underweight)\b')
+GLOBAL_IMPACT = re.compile(
+    r'\b(?:fomc|opec|(?:us|treasury) yields?|(?:us|china) (?:inflation|cpi|jobs|payrolls|gdp)|'
+    r'(?:fed|ecb|bank of japan|boj|pboc)\b.{0,60}\b(?:rates?|minutes|cuts?|hikes?|policy|decision)|'
+    r'tariffs?|trade war|crude oil (?:price|supply|output)|oil prices?|'
+    r'(?:global stocks|wall street)\b.{0,55}\b(?:selloff|rout|plunge|surge))\b')
+LOW_SIGNAL = re.compile(
+    r'\b(?:personal finance|credit cards?|mortgage|lottery|celebrity|'
+    r'real estate tips|oil indicators|reservoir discovery|drilling site|opinion|editorial)\b')
 
 def select_news(articles, limit=8):
-    """Rank dated, deduplicated provider articles; quotas are targets, not invented news."""
-    ranked=[]
+    """Rank Indian market stories first and reserve at most two slots for global catalysts."""
+    india, global_ = [], []
     for row in articles:
-        title=str(row.get('title') or '').casefold()
-        if not title or not row.get('url') or not row.get('published_IST'):
+        title = str(row.get('title') or '').casefold()
+        if not title or not row.get('url') or not row.get('published_IST') or LOW_SIGNAL.search(title):
             continue
-        india=sum(term in title for term in INDIA_TERMS)
-        global_=sum(term in title for term in GLOBAL_TERMS)
-        penalty=sum(term in title for term in UNRELATED_TERMS)
-        score=3*india+2*global_-8*penalty
-        if score<=0:continue
-        ranked.append((score, row['published_IST'], 'india' if india>=global_ else 'global', row))
-    ranked.sort(key=lambda x:(x[0],x[1]),reverse=True)
-    chosen=[];used=set()
-    for group,count in (('india',3),('global',2)):
-        for _,_,kind,row in ranked:
-            identity=re.sub(r'\W+',' ',row['title'].casefold()).strip()
-            if kind==group and identity not in used and len([x for x in chosen if x[0]==group])<count:
-                chosen.append((kind,row));used.add(identity)
-    for _,_,kind,row in ranked:
-        identity=re.sub(r'\W+',' ',row['title'].casefold()).strip()
-        if len(chosen)>=limit:break
-        if identity not in used:chosen.append((kind,row));used.add(identity)
-    return [row for _,row in chosen]
+        matches = len(set(INDIA_MARKETS.findall(title)))
+        if matches or (INDIA_CONTEXT.search(title) and MARKET_CONTEXT.search(title)):
+            india.append((matches, row))
+        elif impact := len(set(GLOBAL_IMPACT.findall(title))):
+            global_.append((impact, row))
+
+    selected, seen = [], set()
+    for is_india, candidates in ((True, india), (False, global_)):
+        cap = 6 if is_india else min(2, max(0, len(selected) - 1))
+        available = min(cap, limit - len(selected))
+        for _, row in sorted(candidates, key=lambda item: (item[0], item[1]['published_IST']), reverse=True):
+            if available <= 0:
+                break
+            identity = re.sub(r'\W+', ' ', row['title'].casefold()).strip()
+            if identity in seen or row['url'] in seen:
+                continue
+            seen.update((identity, row['url']))
+            selected.append(row)
+            available -= 1
+    return selected
 
 US_RELEASES = ('consumer price', 'cpi', 'producer price', 'ppi', 'employment situation',
                'job openings', 'jolts', 'gross domestic product', 'gdp',

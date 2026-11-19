@@ -9,7 +9,10 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
-from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data
+from collections import Counter
+from dataclasses import replace
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data, metals
+from integrated.adapters.corporate_events import reviewed_events
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
@@ -57,14 +60,33 @@ def option_summary(old,new,symbol):
         changed=sum(identities[0][k]!=identities[1][k] for k in old_keys & new_keys)
         reason=(f'Contract universe changed: {len(new_keys-old_keys)} added, '
                 f'{len(old_keys-new_keys)} removed, {changed} changed IDs; '
-                'PCR direction and OI change withheld')
-        return clean({'status':'PARTIAL','reason':reason,'expiry':expiry,
+                'full-chain PCR direction and OI change withheld')
+        summary={'status':'PARTIAL','reason':reason,'expiry':expiry,
                       'strikes':len(chains[1].rows),'unit':'UNVERIFIED_RAW',
                       'pcr_previous':None,'pcr_current':current['pcr'],
                       'pcr_direction':None,'call_walls':current['call_walls'],
                       'put_walls':current['put_walls'],
                       'max_pain':current['max_pain_strikes'],
-                      'call_oi_change':None,'put_oi_change':None})
+                      'call_oi_change':None,'put_oi_change':None}
+        if symbol=='BANKNIFTY':
+            old_ids,new_ids=[Counter(ids.values()) for ids in identities]
+            matched=set()
+            for row in chains[1].rows:
+                strike=row.strike
+                if all(ident not in (None,'') and old_ids[ident]==new_ids[ident]==1 and
+                       identities[0].get((strike,side))==ident
+                       for side,ident in ((side,identities[1][strike,side]) for side in ('CE','PE'))):
+                    matched.add(strike)
+            if matched:
+                previous_subset,current_subset=(replace(chain,rows=tuple(row for row in chain.rows
+                                                                         if row.strike in matched)) for chain in chains)
+                paired=compare_options(current_subset,previous_subset,expected_strikes=matched,
+                                       latest_session=new['date'],previous_session=old['date'])
+                summary['matched_comparison']={
+                    'strikes':len(matched),'previous_strikes':len(chains[0].rows),
+                    'pcr_previous':paired['previous']['pcr'],'pcr_current':paired['current']['pcr'],
+                    'call_oi_change':paired['call_oi_change'],'put_oi_change':paired['put_oi_change']}
+        return clean(summary)
     x=compare_options(chains[1],chains[0],expected_strikes=[r.strike for r in chains[0].rows],latest_session=new['date'],previous_session=old['date'])
     return clean({'status':'PROVISIONAL','expiry':expiry,'strikes':len(chains[0].rows),'unit':'UNVERIFIED_RAW','pcr_previous':x['previous']['pcr'],'pcr_current':x['current']['pcr'],'pcr_direction':x['pcr_direction'],'call_walls':x['current']['call_walls'],'put_walls':x['current']['put_walls'],'max_pain':x['current']['max_pain_strikes'],'call_oi_change':x['call_oi_change'],'put_oi_change':x['put_oi_change']})
 
@@ -137,11 +159,13 @@ def index_daily(api, key, sessions, cutoff, exchange='NSE'):
         raise flows.CheckFailure('Two completed '+exchange+' sessions are required')
     path=('/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'
           +sessions[0]+'/'+sessions[1])
-    bars=flows.daily_bars(api.get(path,version='v3'),cutoff)
+    bars=flows.daily_bars(api.get(path,version='v3'),cutoff,include_range=True)
     if any(day not in bars for day in sessions[:2]):
         raise flows.CheckFailure('Daily close missing for a required '+exchange+' session')
-    current=Decimal(bars[sessions[0]]['close']);previous=Decimal(bars[sessions[1]]['close'])
+    daily=bars[sessions[0]]
+    current=Decimal(daily['close']);previous=Decimal(bars[sessions[1]]['close'])
     return clean({'status':'PASS','latest_date':sessions[0],'previous_date':sessions[1],
+                  'high':daily['high'],'low':daily['low'],'source':'Upstox daily candle',
                   'close':current,'previous_close':previous,'change':current-previous,
                   'change_pct':(current-previous)*100/previous,'unit':'index points'})
 
@@ -250,6 +274,7 @@ def main():
             compact['trading_day']='OPEN' if 'NSE' in session and 'NFO' in session else 'CLOSED'
         else:compact['trading_day']='UNVERIFIED'
         if compact['trading_day']=='OPEN':
+            spot_metals=metals.run(cutoff)
             results=attempt(lambda:flows.run_checks(api,cutoff,observed_now=now));full['flows']=results
             compact['flows']=compact_flows(results)
             cal=next((r for r in results if r.get('check')=='Provider session calendar' and r.get('status')=='PASS'),None) if isinstance(results,list) else None
@@ -304,6 +329,7 @@ def main():
             compact['extra_data']=extra_data.run(
                 cutoff,os.environ.get('FRED_API_KEY',''),
                 os.environ.get('ALPHAVANTAGE_API_KEY',''))
+            compact['extra_data']['metals']=spot_metals
             news.MAX_PAGES=4
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')
@@ -320,7 +346,7 @@ def main():
             fields=('title','agency','date_IST','scheduled_IST','source')
             compact['calendar']=[{k:r.get(k) for k in fields} for r in us_events[:6]]
             compact['today_india']=[{k:r.get(k) for k in fields} for r in india_events[:4]]
-            compact['india_corporate_events']='N/A: official results, ex-date and IPO feed not validated'
+            compact['india_corporate_events']=reviewed_events(str(day))
             compact['calendar_note']=(next((row.get('reason') for row in c.get('checks',[]) if row.get('status') in ('FAIL','BLOCKED')),None)
                                       or 'No whitelisted release in the next seven days')
             compact['calendar_status']='PARTIAL'

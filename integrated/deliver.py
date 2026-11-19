@@ -4,9 +4,10 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from integrated.adapters import nse_mcp
 from integrated.review import IST,load,validate
 from integrated.telegram import send
-from integrated.render import render
+from integrated.visual_report import render_visual as render
 from integrated.brief_v3 import caption
 
 def persist(path):
@@ -19,12 +20,25 @@ def reserve(path,payload,commit=persist):
     with path.open('x') as out:json.dump(payload,out,indent=2)
     commit(path) # MUST succeed remotely before any sendDocument call.
 
+def with_breadth(snapshot, *, enabled, dry):
+    """Keep provider breadth in the rendered PDF and out of the public handoff."""
+    if not enabled or dry:
+        return snapshot
+    sessions=snapshot.get('completed_sessions',{}).get('NSE',[])
+    session=sessions[0] if sessions else None
+    cutoff=dt.datetime.fromisoformat(snapshot['cutoff_IST'])
+    try:
+        breadth=nse_mcp.fetch_breadth(session,cutoff)
+    except nse_mcp.CheckFailure as exc:
+        breadth={'status':'UNAVAILABLE','reason':str(exc)}
+    return {**snapshot,'breadth':breadth}
+
 def main():
     now=dt.datetime.now(IST);dry=os.environ.get('DRY_RUN','true')=='true'
     day=os.environ.get('REPORT_DATE') or now.date().isoformat()
     s,r=load(day);validate(s,r,now,live=not dry)
     output=Path('out')/f'NSE-Morning-Report-{day}.pdf'
-    render(s,r,output)
+    render(with_breadth(s,enabled=os.environ.get('NSE_BREADTH_FOR_DELIVERY')=='true',dry=dry),r,output)
     pdf=output.read_bytes()
     if not pdf.startswith(b'%PDF-') or len(pdf)<1000:
         raise ValueError('PDF render failed integrity check')
@@ -37,6 +51,7 @@ def main():
         if prior.get('report_date')!=day or prior.get('status')!='SENT' or not prior.get('text_sha256') or not prior.get('message_id'):
             raise ValueError('PDF follow-up requires confirmed prior text delivery')
     ledger=Path('supplemental_pdf_ledger' if followup else 'delivery_ledger')/(day+'.json')
+    validate(s,r,dt.datetime.now(IST),live=True)
     reserve(ledger,{'report_date':day,'status':'RESERVED_UNCERTAIN_UNTIL_VERIFIED','run_id':os.environ.get('GITHUB_RUN_ID')})
     # Recheck the live window after the remote reservation, immediately before sendDocument.
     validate(s,r,dt.datetime.now(IST),live=True)
