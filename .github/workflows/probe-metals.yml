@@ -2,7 +2,7 @@ name: Probe gold and silver response schema
 on:
   push:
     branches: [fix/spot-metals]
-    paths: ['.github/workflows/probe-metals.yml']
+    paths: ['.github/workflows/probe-metals.yml', 'integrated/probe_metals.py']
 permissions:
   contents: read
 jobs:

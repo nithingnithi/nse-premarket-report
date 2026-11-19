@@ -16,7 +16,18 @@ def safe_keys(value):
 
 def shape(value):
     if isinstance(value, dict):
+        notice = str(value.get('Information', value.get('Note', ''))).lower()
+        category = ('PREMIUM' if 'premium' in notice else
+                    'RATE_LIMIT' if any(word in notice for word in ('rate limit', 'requests per day', 'calls per day')) else
+                    'KEY_REJECTED' if 'invalid api' in notice else
+                    'OTHER_NOTICE' if notice else None)
+        nominal = value.get('nominal')
+        timestamp = value.get('timestamp')
         return {'type': 'object', 'keys': safe_keys(value),
+                'notice_category': category,
+                'nominal': nominal if isinstance(nominal, str) and re.fullmatch(r'[A-Za-z0-9 /._-]{1,30}', nominal) else None,
+                'timestamp': timestamp if isinstance(timestamp, str) and re.fullmatch(r'[0-9T: +Z.-]{1,35}', timestamp) else None,
+                'price_type': type(value.get('price')).__name__,
                 'children': {k: safe_keys(value[k]) for k in safe_keys(value)
                              if isinstance(value[k], dict)}}
     if isinstance(value, list):
