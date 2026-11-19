@@ -9,7 +9,7 @@ from fractions import Fraction
 from zoneinfo import ZoneInfo
 import urllib.request
 import urllib.parse
-from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data
+from integrated.adapters import flows, global_data, news, calendar, archive, nse_mcp, extra_data, metals
 from nse_report.calculations import OptionChain, OptionRow, compare_options, option_metrics, score_summary
 from integrated.brief_v3 import futures_point, option_points, vix_flag, select_news, select_events
 IST=ZoneInfo('Asia/Kolkata')
@@ -304,6 +304,7 @@ def main():
             compact['extra_data']=extra_data.run(
                 cutoff,os.environ.get('FRED_API_KEY',''),
                 os.environ.get('ALPHAVANTAGE_API_KEY',''))
+            compact['extra_data']['metals']=metals.run(cutoff)
             news.MAX_PAGES=4
             n=attempt(lambda:news.run_checks(news.API(os.environ.get('MARKETAUX_API_TOKEN',''),max_requests=12),now));full['news']=n
             compact['news_status']=n.get('status','UNAVAILABLE')

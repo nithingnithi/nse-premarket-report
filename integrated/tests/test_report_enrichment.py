@@ -80,6 +80,22 @@ class ReportEnrichmentTests(unittest.TestCase):
         self.assertIn('Infosys\n$20\n+5%',page)
         self.assertEqual(s['score'],score)
 
+    def test_pdf_renders_spot_metals_with_asof_and_no_fake_change(self):
+        s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
+        r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
+        score=dict(s['score'])
+        s['extra_data']={'metals':{
+            'GOLD':{'status':'PROVISIONAL','value':'3800.5',
+                    'asof_IST':'2026-10-28T07:45:30+05:30','unit':'USD per troy oz'},
+            'SILVER':{'status':'UNAVAILABLE','reason':'Spot observation is over 90 seconds old'}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'report.pdf';render(s,r,path)
+            page=PdfReader(path).pages[0].extract_text()
+        self.assertIn('GOLD SPOT USD/TROY OZ\n$3,800.5\nGold API 28 Oct 07:45 IST',page)
+        self.assertIn('SILVER SPOT USD/TROY OZ\nN/A',page)
+        self.assertIn('Spot observation is over 90\nseconds old',page)
+        self.assertEqual(s['score'],score)
+
     def test_snapshot_withholds_stale_sector_close(self):
         s=json.loads(Path('integrated/tests/fixtures/snapshot.json').read_text())
         r=json.loads(Path('integrated/tests/fixtures/review.json').read_text())
