@@ -15,6 +15,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph
 
+from integrated.adapters.nse_mcp import CheckFailure, validate_breadth
 from integrated.brief_v3 import traditional_pivots
 from integrated.render import number, reason, signed, stamp, text
 
@@ -251,16 +252,30 @@ def render_visual(s, review, path):
         if i<4: v.line(M+10, y+34, M+250, y+34)
     v.box(298, 360, 269, 204, border=True)
     breadth = s.get('breadth', {})
-    adv, decline = dec(breadth.get('advances')), dec(breadth.get('declines'))
+    checked_breadth = None
+    breadth_reason = label_reason(breadth) if breadth else 'Previous-session breadth not collected'
+    if breadth.get('status')=='PASS':
+        try:
+            checked_breadth=validate_breadth(breadth,nse[0] if nse else None)
+        except CheckFailure as exc:
+            breadth_reason=str(exc)
     v.write('BREADTH / NSE', 310, 371, 240, 8, MUTED, True)
-    if adv is not None and decline is not None and adv+decline>0:
+    if checked_breadth:
+        adv,decline,unchanged,total=(checked_breadth[key] for key in
+                                     ('advances','declines','unchanged','total_stocks'))
         v.write(number(adv,0)+' advancing', 310, 390, 125, 10, GREEN, True)
         v.write(number(decline,0)+' declining', 440, 390, 110, 10, RED, True)
         v.box(310, 415, 245, 12, '#EDF2F7', 6)
-        v.box(310, 415, 245*float(adv/(adv+decline)), 12, GREEN, 6)
+        if adv+decline:
+            v.box(310,415,245*(adv+decline)/total,12,RED,6)
+        if adv:
+            v.box(310,415,245*adv/total,12,GREEN,6)
+        ratio=f'{adv/decline:.2f}' if decline else 'N/A'
+        breadth_day=dt.date.fromisoformat(checked_breadth['date']).strftime('%d %b')
+        v.write(f'{number(unchanged,0)} unchanged | A/D {ratio} | {breadth_day} NSE Bhavcopy',
+                310,431,245,7,MUTED)
     else:
-        v.write('N/A: '+(label_reason(breadth) if breadth else 'Previous-session breadth not collected'),
-                310, 390, 245, 7.5, AMBER, max_lines=2)
+        v.write('N/A: '+breadth_reason,310,390,245,7.5,AMBER,max_lines=2)
     v.write('SECTOR MOMENTUM / D', 310, 447, 240, 8, MUTED, True)
     for i,name in enumerate(('PSU Bank','Realty','Auto','FMCG','Energy','IT')):
         row=sectors.get(name,{})

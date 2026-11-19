@@ -31,6 +31,7 @@ jobs:
       - name: Validate review and deliver PDF once
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          NSE_BREADTH_FOR_DELIVERY: ${{ vars.NSE_BREADTH_FOR_DELIVERY }}
           REPORT_DATE: ${{ inputs.report_date }}
           PDF_FOLLOWUP: ${{ inputs.pdf_followup && 'true' || 'false' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
