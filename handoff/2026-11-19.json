@@ -1,0 +1,603 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-19",
+  "cutoff_IST": "2026-11-19T07:45:00+05:30",
+  "collected_at_IST": "2026-11-19T07:45:52.958493+05:30",
+  "mode": "MORNING_BRIEF",
+  "source_run": "44443010506",
+  "options": {
+    "NIFTY": {
+      "status": "PROVISIONAL",
+      "expiry": "2026-11-23",
+      "strikes": 158,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": "1.081813178809018954047360839",
+      "pcr_current": "0.8546871858543175300786223973",
+      "pcr_direction": "DOWN",
+      "call_walls": [
+        "26000.00"
+      ],
+      "put_walls": [
+        "24000.00"
+      ],
+      "max_pain": [
+        "25050.00"
+      ],
+      "call_oi_change": 55775070,
+      "put_oi_change": 18483530
+    },
+    "BANKNIFTY": {
+      "status": "PARTIAL",
+      "reason": "Contract universe changed: 16 added, 0 removed, 0 changed IDs; PCR direction and OI change withheld",
+      "expiry": "2026-11-23",
+      "strikes": 198,
+      "unit": "UNVERIFIED_RAW",
+      "pcr_previous": null,
+      "pcr_current": "1.182365268303831759523941565",
+      "pcr_direction": null,
+      "call_walls": [
+        "62000.00"
+      ],
+      "put_walls": [
+        "60000.00"
+      ],
+      "max_pain": [
+        "60000.00"
+      ],
+      "call_oi_change": null,
+      "put_oi_change": null
+    }
+  },
+  "global": [
+    {
+      "name": "HANG SENG",
+      "value": 22904.0,
+      "asof": "2026-11-19T07:44:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "23294.75",
+      "change_pct": "-1.677416585282091458375814293"
+    },
+    {
+      "name": "DOW JONES",
+      "value": 50206.36,
+      "asof": "2026-11-19T01:29:57+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "50780.42",
+      "change_pct": "-1.130475092565205250370122973"
+    },
+    {
+      "name": "USD INR",
+      "value": 93.44,
+      "asof": "2026-11-19T07:29:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "93.46",
+      "change_pct": "-0.02139952921035737213781296811"
+    },
+    {
+      "name": "Oil (Brent)",
+      "value": 92.53,
+      "asof": "2026-11-19T07:42:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "91.48",
+      "change_pct": "1.147791867074770441626585046"
+    },
+    {
+      "name": "S&P",
+      "value": 7341.99,
+      "asof": "2026-11-19T01:29:57+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "7361.53",
+      "change_pct": "-0.2654339519094536054325663279"
+    },
+    {
+      "name": "GIFT NIFTY",
+      "value": 25165.5,
+      "asof": "2026-11-19T07:44:50+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "25198.5",
+      "change_pct": "-0.1309601762009643431156616465"
+    },
+    {
+      "name": "US Tech 100",
+      "value": 24434.37,
+      "asof": "2026-11-19T01:29:57+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "24349.39",
+      "change_pct": "0.3490025828162430352464681867"
+    },
+    {
+      "name": "Oil (WTI)",
+      "value": 82.43,
+      "asof": "2026-11-19T07:44:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "81.82",
+      "change_pct": "0.7455389880224883891469078465"
+    },
+    {
+      "name": "NIKKEI 225",
+      "value": 59100.56,
+      "asof": "2026-11-19T07:44:00+05:30",
+      "status": "PROVISIONAL",
+      "reason": "Last observed quote; market-session completeness not verified",
+      "previous_close": "59122.35",
+      "change_pct": "-0.03685577450828662933729799306"
+    }
+  ],
+  "calendar": [
+    {
+      "title": "Gross Domestic Product",
+      "agency": "BEA",
+      "date_IST": "2026-11-25",
+      "scheduled_IST": "2026-11-25T19:00:00+05:30",
+      "source": "https://apps.bea.gov/API/signup/release_dates.json"
+    }
+  ],
+  "news": [
+    {
+      "title": "Goldman Sachs upgrades India to overweight, sees Nifty at 28,500",
+      "url": "https://economictimes.indiatimes.com/markets/stocks/news/goldman-sachs-upgrades-india-to-overweight-sees-nifty-at-28500/articleshow/135974480.cms",
+      "source": "economictimes.indiatimes.com",
+      "published_IST": "2026-11-19T06:25:19.000000+05:30"
+    },
+    {
+      "title": "Goldman Sachs sees rupee stabilising around 94 over next quarter",
+      "url": "https://economictimes.indiatimes.com/markets/forex/rupees-slide-may-be-over-says-goldman-pegs-it-at-94/articleshow/135974692.cms",
+      "source": "economictimes.indiatimes.com",
+      "published_IST": "2026-11-19T06:24:20.000000+05:30"
+    },
+    {
+      "title": "'India's challenge next year may be rupee's strength, not weakness': CEA Nageswaran",
+      "url": "https://timesofindia.indiatimes.com/business/india-business/indias-challenge-next-year-may-be-rupees-strength-not-weakness-cea-nageswaran/articleshow/135974257.cms",
+      "source": "timesofindia.indiatimes.com",
+      "published_IST": "2026-11-19T05:27:45.000000+05:30"
+    },
+    {
+      "title": "U.S. oil price slides as data shows larger-than-expected increases in crude, gasoline stocks",
+      "url": "https://seekingalpha.com/news/4674491-us-oil-price-slides-as-data-shows-larger-than-expected-increases-in-crude-gasoline-stocks",
+      "source": "seekingalpha.com",
+      "published_IST": "2026-11-19T06:17:27.000000+05:30"
+    },
+    {
+      "title": "Geopolitical Tensions Escalate as Trump Weighs Iran Strikes and NATO Divisions Deepen",
+      "url": "https://www2.stockmarketwatch.com/stock-market-news/geopolitical-tensions-escalate-as-trump-weighs-iran-strikes-and-nato-divisions-deepen/74922/",
+      "source": "www2.stockmarketwatch.com",
+      "published_IST": "2026-11-19T06:08:17.000000+05:30"
+    },
+    {
+      "title": "Gold loan firms seek RBI clarity on selling stressed loans to ARCs to help borrowers reclaim pledged jewellery",
+      "url": "https://economictimes.indiatimes.com/markets/stocks/news/gold-loan-firms-seek-rbi-clarity-on-selling-stressed-loans-to-arcs-to-help-borrowers-reclaim-pledged-jewellery/articleshow/135974910.cms",
+      "source": "economictimes.indiatimes.com",
+      "published_IST": "2026-11-19T00:40:00.000000+05:30"
+    },
+    {
+      "title": "Bohemian Currency: We shouldn\u2019t stress about easy come-easy go, little high-little low of the rupee",
+      "url": "https://economictimes.indiatimes.com/opinion/et-commentary/bohemian-currency-we-shouldnt-stress-about-easy-come-easy-go-little-high-little-low-of-the-rupee/articleshow/135968890.cms",
+      "source": "economictimes.indiatimes.com",
+      "published_IST": "2026-11-18T23:15:55.000000+05:30"
+    },
+    {
+      "title": "Fed Minutes Signal Potential December Hike; Skydance Merges TV Studios",
+      "url": "https://www2.stockmarketwatch.com/stock-market-news/fed-minutes-signal-potential-december-hike-skydance-merges-tv-studios/74906/",
+      "source": "www2.stockmarketwatch.com",
+      "published_IST": "2026-11-19T00:38:20.000000+05:30"
+    }
+  ],
+  "vix_flag": "NORMAL",
+  "score": {
+    "signals": {
+      "futures_build_up": -1,
+      "pcr_direction": -1,
+      "strike_walls": -1,
+      "fii_futures": -1,
+      "fii_cash": 1,
+      "dii_cash": -1
+    },
+    "score": -4,
+    "available": 6,
+    "total": 6,
+    "missing": [],
+    "missing_count": 0,
+    "score_range": [
+      -4,
+      -4
+    ],
+    "possible_categories": [
+      "BEARISH"
+    ],
+    "bias": "BEARISH"
+  },
+  "limitations": [
+    "Cash: \u20b9 cr per user assumption; no rescaling. Futures and option OI use raw provider counts.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "OPEN",
+  "flows": [
+    {
+      "check": "NIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61471",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-11-18",
+          "bar_start_IST": "2026-11-18T00:00:00+05:30",
+          "close": "25239.3",
+          "volume": 3720080,
+          "oi_raw": 10643360
+        },
+        {
+          "date": "2026-11-17",
+          "bar_start_IST": "2026-11-17T00:00:00+05:30",
+          "close": "25415.3",
+          "volume": 3880760,
+          "oi_raw": 11393265
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "BANKNIFTY futures",
+      "status": "PASS",
+      "instrument_key": "NSE_FO|61466",
+      "expiry": "2026-11-23",
+      "daily_observations": [
+        {
+          "date": "2026-11-18",
+          "bar_start_IST": "2026-11-18T00:00:00+05:30",
+          "close": "61946.8",
+          "volume": 722880,
+          "oi_raw": 1742850
+        },
+        {
+          "date": "2026-11-17",
+          "bar_start_IST": "2026-11-17T00:00:00+05:30",
+          "close": "62316.8",
+          "volume": 793620,
+          "oi_raw": 1892460
+        }
+      ],
+      "intraday_closed_session_fallback": false,
+      "units": "Price in index points; OI raw provider counts (docs say contracts); independent unit reconciliation pending."
+    },
+    {
+      "check": "FII index-futures positions",
+      "status": "PASS",
+      "scope": "Aggregate NSE index futures; not Nifty-only or Bank-Nifty-only.",
+      "observations": [
+        {
+          "date": "2026-11-18",
+          "provider_time_stamp_ms": 1794940200000,
+          "long_contracts": 65342,
+          "short_contracts": 136012,
+          "net_contracts": -70670,
+          "long_divided_by_short": "0.4804134929270946681175190424",
+          "ratio_note": "long / short"
+        },
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "long_contracts": 65568,
+          "short_contracts": 130691,
+          "net_contracts": -65123,
+          "long_divided_by_short": "0.5017024890772891782907774828",
+          "ratio_note": "long / short"
+        }
+      ]
+    },
+    {
+      "check": "FII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-11-18",
+          "provider_time_stamp_ms": 1794940200000,
+          "buy_raw": "17913.16",
+          "sell_raw": "12046.38",
+          "net_raw": "5866.78"
+        },
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "buy_raw": "19930.98",
+          "sell_raw": "15735.6",
+          "net_raw": "4195.38"
+        },
+        {
+          "date": "2026-11-16",
+          "provider_time_stamp_ms": 1794767400000,
+          "buy_raw": "15636.88",
+          "sell_raw": "10772.2",
+          "net_raw": "4864.68"
+        },
+        {
+          "date": "2026-11-13",
+          "provider_time_stamp_ms": 1794508200000,
+          "buy_raw": "18339.57",
+          "sell_raw": "12603.02",
+          "net_raw": "5736.55"
+        },
+        {
+          "date": "2026-11-12",
+          "provider_time_stamp_ms": 1794421800000,
+          "buy_raw": "20273.32",
+          "sell_raw": "12442.72",
+          "net_raw": "7830.60"
+        }
+      ],
+      "net_sum_last_3_raw": "14926.84",
+      "net_sum_last_5_raw": "28493.99",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    },
+    {
+      "check": "DII cash",
+      "status": "PASS",
+      "observations": [
+        {
+          "date": "2026-11-18",
+          "provider_time_stamp_ms": 1794940200000,
+          "buy_raw": "14602.25",
+          "sell_raw": "17762.15",
+          "net_raw": "-3159.90"
+        },
+        {
+          "date": "2026-11-17",
+          "provider_time_stamp_ms": 1794853800000,
+          "buy_raw": "14903.8",
+          "sell_raw": "14706.87",
+          "net_raw": "196.93"
+        },
+        {
+          "date": "2026-11-16",
+          "provider_time_stamp_ms": 1794767400000,
+          "buy_raw": "11752.03",
+          "sell_raw": "15271.08",
+          "net_raw": "-3519.05"
+        },
+        {
+          "date": "2026-11-13",
+          "provider_time_stamp_ms": 1794508200000,
+          "buy_raw": "11745.95",
+          "sell_raw": "13999.53",
+          "net_raw": "-2253.58"
+        },
+        {
+          "date": "2026-11-12",
+          "provider_time_stamp_ms": 1794421800000,
+          "buy_raw": "15855.13",
+          "sell_raw": "22186.3",
+          "net_raw": "-6331.17"
+        }
+      ],
+      "net_sum_last_3_raw": "-6482.02",
+      "net_sum_last_5_raw": "-15066.77",
+      "units": "\u20b9 cr",
+      "unit_basis": "User-specified assumption; no rescaling; independent reconciliation pending"
+    }
+  ],
+  "completed_sessions": {
+    "NSE": [
+      "2026-11-18",
+      "2026-11-17",
+      "2026-11-16",
+      "2026-11-13",
+      "2026-11-12"
+    ],
+    "NFO": [
+      "2026-11-18",
+      "2026-11-17"
+    ],
+    "BSE": [
+      "2026-11-18",
+      "2026-11-17"
+    ]
+  },
+  "latest_nse_close_IST": "2026-11-18T15:30:00+05:30",
+  "spot": {
+    "NIFTY": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "25227.95",
+      "previous_close": "25387.4",
+      "change": "-159.45",
+      "change_pct": "-0.6280674665385191079039208426",
+      "unit": "index points"
+    },
+    "BANKNIFTY": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "62038.65",
+      "previous_close": "62273.25",
+      "change": "-234.60",
+      "change_pct": "-0.3767267647023400898459611470",
+      "unit": "index points"
+    },
+    "MIDCAP100": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "60979.35",
+      "previous_close": "61730.0",
+      "change": "-750.65",
+      "change_pct": "-1.216021383444030455208164588",
+      "unit": "index points"
+    },
+    "SMALLCAP100": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "19331.6",
+      "previous_close": "19398.7",
+      "change": "-67.1",
+      "change_pct": "-0.3458994674900895420827168831",
+      "unit": "index points"
+    },
+    "SENSEX": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "82031.81",
+      "previous_close": "82532.19",
+      "change": "-500.38",
+      "change_pct": "-0.6062846508737984536700165111",
+      "unit": "index points"
+    }
+  },
+  "sectors": {
+    "PSU Bank": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "9542.8",
+      "previous_close": "9486.6",
+      "change": "56.2",
+      "change_pct": "0.5924145637003773744017877849",
+      "unit": "index points"
+    },
+    "Realty": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "918.65",
+      "previous_close": "926.5",
+      "change": "-7.85",
+      "change_pct": "-0.8472746896923907177549919050",
+      "unit": "index points"
+    },
+    "Auto": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "27394.95",
+      "previous_close": "27769.15",
+      "change": "-374.20",
+      "change_pct": "-1.347538545472223672672732151",
+      "unit": "index points"
+    },
+    "FMCG": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "47569.1",
+      "previous_close": "47611.6",
+      "change": "-42.5",
+      "change_pct": "-0.08926396088348217661242218283",
+      "unit": "index points"
+    },
+    "Energy": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "36979.55",
+      "previous_close": "37176.7",
+      "change": "-197.15",
+      "change_pct": "-0.5303052718503794043043088816",
+      "unit": "index points"
+    },
+    "IT": {
+      "status": "PASS",
+      "latest_date": "2026-11-18",
+      "previous_date": "2026-11-17",
+      "close": "31262.3",
+      "previous_close": "31654.1",
+      "change": "-391.8",
+      "change_pct": "-1.237754350937161378778736404",
+      "unit": "index points"
+    }
+  },
+  "cm_market_fallback": {
+    "status": "NOT_NEEDED",
+    "used": []
+  },
+  "vix_daily": {
+    "status": "PASS",
+    "latest_date": "2026-11-18",
+    "previous_date": "2026-11-17",
+    "close": "15.57",
+    "previous_close": "15.52",
+    "change": "0.05",
+    "change_pct": "0.3221649484536082474226804124",
+    "unit": "index points"
+  },
+  "archive_sources": [
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261118_F_0000.csv.zip",
+    "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_20261117_F_0000.csv.zip"
+  ],
+  "vix": {
+    "status": "PASS",
+    "last_price": 15.57,
+    "quote_time_IST": "2026-11-19T07:46:02+05:30",
+    "last_trade_time_IST": "2026-11-18T16:00:00+05:30"
+  },
+  "extra_data": {
+    "us_10y": {
+      "status": "PROVISIONAL",
+      "value": "5.1",
+      "date": "2026-11-17",
+      "previous": "5.12",
+      "change_bp": "-2.00",
+      "unit": "%",
+      "source": "FRED DGS10",
+      "reason": "Observation date is known; release time is not supplied"
+    },
+    "adrs": {
+      "Infosys": {
+        "status": "PROVISIONAL",
+        "value": "11.7800",
+        "date": "2026-11-18",
+        "previous": "12.0700",
+        "change_pct": "-2.402651201325600662800331400",
+        "unit": "USD per ADR",
+        "source": "Alpha Vantage GLOBAL_QUOTE",
+        "reason": "End-of-day quote; publication time not supplied"
+      },
+      "HDFC Bank": {
+        "status": "UNAVAILABLE",
+        "reason": "Alpha Vantage ADR quote or symbol missing"
+      },
+      "ICICI Bank": {
+        "status": "UNAVAILABLE",
+        "reason": "Alpha Vantage ADR quote or symbol missing"
+      },
+      "Wipro": {
+        "status": "UNAVAILABLE",
+        "reason": "Alpha Vantage ADR quote or symbol missing"
+      }
+    },
+    "metals": {
+      "GOLD": {
+        "status": "UNAVAILABLE",
+        "reason": "Metal response schema and unit not validated"
+      },
+      "SILVER": {
+        "status": "UNAVAILABLE",
+        "reason": "Metal response schema and unit not validated"
+      }
+    },
+    "requests": {
+      "fred": 1,
+      "alpha": 4
+    }
+  },
+  "news_status": "FAIL",
+  "news_requests_used": 11,
+  "news_note": "8 shown of 25 matched in the window; max 12 requests. Selected queries, not exhaustive.",
+  "today_india": [],
+  "india_corporate_events": "N/A: official results, ex-date and IPO feed not validated",
+  "calendar_note": "Reviewed schedule snapshot is stale, future-dated or outside its covered horizon; refresh official sources.",
+  "calendar_status": "PARTIAL",
+  "collection_status": "PARTIAL",
+  "timing": "ON_TIME_COLLECTION"
+}
