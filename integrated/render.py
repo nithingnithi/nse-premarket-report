@@ -192,6 +192,15 @@ def render(s,r,path):
             p(number(yield_row.get('value'))+'%' if yield_row.get('status')=='PROVISIONAL' else 'N/A',x,196,99,13,INK,True)
             p(signed(yield_row.get('change_bp'))+' bp' if yield_row.get('status')=='PROVISIONAL' else 'Change N/A',x,176,99,7,MUTED)
             continue
+        if heading in ('GOLD','SILVER'):
+            metal=extra.get('metals',{}).get(heading,{})
+            valid=(metal.get('status')=='PROVISIONAL' and
+                   metal.get('unit')=='USD per troy oz' and metal.get('value') is not None)
+            p(heading+' SPOT USD/TROY OZ',x,219,99,7,MUTED,True)
+            p('$'+number(metal['value']) if valid else 'N/A',x,196,99,13,INK,True)
+            detail=('Gold API '+stamp(metal.get('asof_IST')) if valid else reason(metal))
+            p(text(detail),x,176,99,6.5,MUTED,maxh=20)
+            continue
         p(heading,x,219,99,7,MUTED,True)
         p(number(row['value']) if row else 'N/A',x,196,99,13,INK,True)
         pct=row.get('change_pct') if row else None
@@ -211,7 +220,7 @@ def render(s,r,path):
                        +stamp(source_row.get('source_asof_IST'))+'.')
     elif fallback.get('status')=='UNAVAILABLE':
         fallback_note='NSE MCP fallback unavailable: '+str(fallback.get('reason') or 'no validated response')
-    else:fallback_note='US yield: FRED DGS10 (dated EOD). ADRs and metals: N/A unless validated and permitted.'
+    else:fallback_note='US yield: FRED DGS10 (dated EOD). Metals: timed Gold API spot, display only.'
     p(text(fallback_note),35,108,525,7,MUTED,maxh=10)
     p(text('; '.join(missing_global[:2])) if missing_global else 'Opening indication is not a forecast and does not alter the model score.',35,96,525,7,MUTED,maxh=18)
     line(35,42,525);p('NSE MORNING BRIEF  |  SAVED SOURCE TIMES',35,31,405,7,MUTED)
