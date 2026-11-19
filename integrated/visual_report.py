@@ -507,8 +507,28 @@ def render_visual(s, review, path):
 
     # PAGE 3: dated news, events and explicit gaps
     v.page(3,'News, events & data quality','Recent headlines  |  IST calendar  |  Missing-field explanations')
-    news=s.get('news',[])[:8]
-    v.section('Market-moving news',140,s.get('news_note') or f'{len(news)} shown from saved window')
+    sbi = s.get('sbi', {})
+    sbi_news = sbi.get('news', {})
+    sbi_actions = sbi.get('actions', {})
+    sbi_filings = sbi.get('filings', {})
+    sbi_board = sbi_filings.get('board_meetings', {})
+    official = [item for kind in ('announcements', 'financial_results')
+                for item in sbi_filings.get(kind, {}).get('notices', [])]
+    news = s.get('news', [])[:8]
+    news_note = s.get('news_note') or f'{len(news)} shown from saved window'
+    sbi_headlines = sbi_news.get('articles', [])[:1] + sorted(
+        official, key=lambda row: row['published_IST'], reverse=True)[:1]
+    if sbi_headlines:
+        def story_key(story):
+            return ' '.join(str(story.get('title') or '').casefold().split())
+
+        seen_titles = {story_key(story) for story in sbi_headlines}
+        seen_urls = {story.get('url') for story in sbi_headlines}
+        news = sbi_headlines + [story for story in news
+                                if story_key(story) not in seen_titles and story.get('url') not in seen_urls]
+        news = news[:8]
+        news_note = f'{len(news)} stories from the 12-hour window'
+    v.section('Market-moving news', 140, news_note)
     for i in range(max(1,len(news))):
         x=M+(i%2)*274.5;y=159+(i//2)*78
         v.box(x,y,264.5,72,border=True)
@@ -519,12 +539,19 @@ def render_visual(s, review, path):
         story=news[i]
         source=story.get('source') or urlsplit(story.get('url') or '').hostname or 'Source N/A'
         v.write(str(source)+' / '+stamp(story.get('published_IST')),x+11,y+10,240,6.7,BLUE,True,max_lines=2)
-        v.write(story.get('title') or 'N/A: headline missing',x+11,y+25,240,8,INK,True,max_lines=3,url=story.get('url'))
+        title = story.get('title') or 'N/A: headline missing'
+        if story.get('source') in ('SBI / Upstox', 'SBI / Marketaux', 'SBI / NSE') and len(title) > 140:
+            title = title[:137].rstrip() + '...'
+        v.write(title,x+11,y+25,240,8,INK,True,max_lines=3,url=story.get('url'))
     v.section('Catalyst calendar / IST',472,'Only saved and dated events')
     v.box(M,490,W-2*M,93,border=True)
     calendar=s.get('calendar',[])[:4]
     india=s.get('today_india',[])[:2]
-    events=(calendar+india)[:6]
+    sbi_events = sorted(sbi_board.get('upcoming', []) + sbi_actions.get('upcoming', []),
+                        key=lambda item: item['date'])[:2]
+    sbi_calendar = [{'title': item['title'], 'date_IST': item['date'], 'url': item.get('url')}
+                    for item in sbi_events]
+    events = (india+sbi_calendar+calendar if sbi_calendar else calendar+india)[:6]
     for i in range(6):
         x=M+12+(i//3)*266;y=497+(i%3)*28
         if i and i%3:v.line(x,y-5,x+246,y-5)
@@ -590,7 +617,19 @@ def render_visual(s, review, path):
             v.write(why,x,y+11,245,6.3,MUTED,max_lines=2)
     if not gaps:v.write('No monitored gaps in this saved snapshot.',M+12,708 if filings else 636,500,9,GREEN)
     v.box(M,750,W-2*M,42,NAVY,8)
-    v.write('VALIDITY: saved source time + status + reason; missing never becomes zero.',M+11,759,517,7.4,'#FFFFFF',True)
+    if sbi:
+        coverage = 'SBI events: see calendar above' if sbi_events else 'SBI: no upcoming event in the feeds checked'
+        if not sbi_events and any(source.get('status') != 'PASS' for source in (sbi_actions, sbi_board)):
+            coverage = 'SBI: upcoming event coverage incomplete'
+        last_dividend = sbi_actions.get('last_dividend')
+        if last_dividend:
+            coverage += f" | Last dividend ₹{last_dividend['amount']}, ex-date {last_dividend['date']}"
+        if not sbi_headlines:
+            coverage += (' | No SBI headlines in checked feeds' if sbi_news.get('status') == 'PASS'
+                         else ' | SBI news coverage incomplete')
+        v.write(coverage, M+11,759,517,7.2,'#FFFFFF',True,max_lines=2)
+    else:
+        v.write('VALIDITY: saved source time + status + reason; missing never becomes zero.',M+11,759,517,7.4,'#FFFFFF',True)
     clocks=[]
     for label,key in (('Dow','DOW JONES'),('Nikkei','NIKKEI 225'),
                       ('Brent','Oil (Brent)'),('USD/INR','USD INR')):
