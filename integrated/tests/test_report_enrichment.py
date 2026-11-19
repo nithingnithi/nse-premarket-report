@@ -46,6 +46,7 @@ class ReportEnrichmentTests(unittest.TestCase):
         api=FakeAPI();cutoff=dt.datetime(2026,11,18,7,45,tzinfo=IST)
         row=index_daily(api,flows.INDICES['Sensex'],['2026-11-17','2026-11-16'],cutoff,'BSE')
         self.assertEqual((row['close'],row['change_pct']),('202','1'))
+        self.assertEqual((row['high'],row['low'],row['source']),('203','199','Upstox daily candle'))
         self.assertIn('BSE_INDEX%7CSENSEX',api.path)
         with self.assertRaisesRegex(flows.CheckFailure,'Two completed BSE sessions'):
             index_daily(api,flows.INDICES['Sensex'],['2026-11-17'],cutoff,'BSE')

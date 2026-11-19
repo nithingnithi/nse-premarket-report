@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from integrated.brief_v3 import traditional_pivots
 from integrated.visual_report import render_visual
 
 
@@ -108,6 +109,30 @@ class VisualReportTests(unittest.TestCase):
             self.assertIn('$4,000', page)
             self.assertIn('GOLD LIVE 28 Oct 07:46', PdfReader(path).pages[2].extract_text())
             self.assertNotIn('50\n28 Oct', page)
+
+    def test_three_index_pivot_panel_uses_the_exact_exchange_session(self):
+        self.assertEqual(traditional_pivots('120','90','105'), ((90,75,60),(120,135,150)))
+        self.assertIsNone(traditional_pivots('NaN','90','105'))
+        self.assertIsNone(traditional_pivots('120','90','125'))
+        snapshot, review = self.fixtures()
+        snapshot['completed_sessions'] = {'NSE':['2026-10-27'], 'BSE':['2026-10-26']}
+        snapshot['spot'] = {
+            'NIFTY':{'status':'PASS','latest_date':'2026-10-27','high':'120','low':'90','close':'105'},
+            'BANKNIFTY':{'status':'PASS','latest_date':'2026-10-27','close':'105'},
+            'SENSEX':{'status':'PASS','latest_date':'2026-10-26','high':'1200','low':'900','close':'1050'},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'visual.pdf'
+            render_visual(snapshot, review, path)
+            page = PdfReader(path).pages[1].extract_text()
+            for expected in ('S 90 / 75 / 60', 'R 120 / 135 / 150', 'BANK NIFTY\nS N/A',
+                             'SENSEX\nS 900 / 750 / 600', 'PDH: 1,200', 'PDL: 900'):
+                self.assertIn(expected, page)
+            snapshot['completed_sessions']['BSE'] = ['2026-10-27']
+            render_visual(snapshot, review, path)
+            stale = PdfReader(path).pages[1].extract_text()
+            self.assertIn('SENSEX\nS N/A', stale)
+            self.assertNotIn('1,200', stale)
 
 
 if __name__ == '__main__':

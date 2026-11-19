@@ -15,6 +15,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph
 
+from integrated.brief_v3 import traditional_pivots
 from integrated.render import number, reason, signed, stamp, text
 
 W, H, M = 595, 842, 28
@@ -237,7 +238,7 @@ def render_visual(s, review, path):
                 color(value) if value is not None else AMBER, True)
         v.write('valid' if value is not None else 'missing', x+5, 319, cw-10, 6.5, MUTED)
 
-    v.section('Previous NSE close', 342, 'D close, not today’s opening price')
+    v.section('Previous index closes', 342, 'Previous NSE and BSE sessions')
     v.box(M, 360, 260, 204, border=True)
     for i,(name,key) in enumerate((('Nifty 50','NIFTY'),('Sensex','SENSEX'),('Bank Nifty','BANKNIFTY'),
                                     ('Midcap 100','MIDCAP100'),('Smallcap 100','SMALLCAP100'))):
@@ -394,7 +395,7 @@ def render_visual(s, review, path):
                 x+12,445,240,7.3,MUTED if dp is not None else AMBER,max_lines=2)
         v.write('Expiry '+str(row.get('expiry') or 'N/A')+' | raw provider OI',x+12,459,240,6.6,MUTED)
 
-    v.section('Option chain / expiry-specific',478,'No mixed expiry or invalid-chain calculations')
+    v.section('Option chain / expiry-specific',478,'Distances in points from the prior index close')
     for i,name in enumerate(('NIFTY','BANKNIFTY')):
         row=options.get(name,{})
         usable=row.get('status') in ('PASS','PROVISIONAL','PARTIAL')
@@ -403,11 +404,20 @@ def render_visual(s, review, path):
         v.box(x,498,264.5,148,border=True)
         v.write(name,x+12,509,130,9.5,INK,True)
         v.write('EXP '+str(row.get('expiry') or 'N/A'),x+145,511,108,7,MUTED,True)
+        cash=daily(name)
+        def option_level(field):
+            strikes=row.get(field) if usable else None
+            value=number(strikes,0)
+            if cash and isinstance(strikes,(list,tuple)) and len(strikes)==1:
+                level=dec(strikes[0])
+                if level is not None:
+                    return value+' ('+signed(level-dec(cash['close']),0)+' pts)'
+            return value
         metrics=[('PCR',number(row.get('pcr_current'),3) if usable else 'N/A'),
                  ('PREVIOUS PCR',number(row.get('pcr_previous'),3) if comparable else 'N/A'),
-                 ('CALL OI WALL',number(row.get('call_walls'),0) if usable else 'N/A'),
-                 ('PUT OI WALL',number(row.get('put_walls'),0) if usable else 'N/A'),
-                 ('MAX PAIN',number(row.get('max_pain'),0) if usable else 'N/A'),
+                 ('CALL OI WALL',option_level('call_walls')),
+                 ('PUT OI WALL',option_level('put_walls')),
+                 ('MAX PAIN',option_level('max_pain')),
                  ('CALL / PUT OI CHANGE',(number(row.get('call_oi_change'),0)+' / '+number(row.get('put_oi_change'),0)) if comparable else 'N/A')]
         for j,(label,value) in enumerate(metrics):
             y=530+j*16
@@ -416,24 +426,30 @@ def render_visual(s, review, path):
         if row.get('status') not in ('PASS','PROVISIONAL'):
             prefix='Current levels only; ' if row.get('status')=='PARTIAL' else 'Reason: '
             v.write(prefix+label_reason(row),x+12,631,240,6.5,AMBER,max_lines=2)
-    v.section('Index reference levels',655,'OI walls and distance from D close; no price forecast')
+    v.section('Index reference levels',655,'S = support | R = resistance | Traditional daily pivots')
     v.box(M,674,W-2*M,117,border=True)
-    for i,(name,key) in enumerate((('NIFTY 50','NIFTY'),('BANK NIFTY','BANKNIFTY'))):
-        x=M+10+i*266
+    column_width=(W-2*M)/3
+    for i,(name,key) in enumerate((('NIFTY 50','NIFTY'),('BANK NIFTY','BANKNIFTY'),('SENSEX','SENSEX'))):
+        x=M+10+i*column_width
+        width=column_width-18
         if i:v.line(x-8,683,x-8,781)
-        row=options.get(key,{})
-        cash=daily(key)
-        v.write(name,x,685,245,8.5,INK,True)
-        for j,(label,field) in enumerate((('PUT WALL','put_walls'),('CALL WALL','call_walls'),('MAX PAIN','max_pain'))):
-            levels=(row.get(field) or []) if row.get('status') in ('PASS','PROVISIONAL','PARTIAL') else []
-            one=levels[0] if isinstance(levels,list) and len(levels)==1 else None
-            level=dec(one)
-            distance=level-dec(cash['close']) if level is not None and cash else None
-            v.write(label,x,704+j*23,80,7,MUTED,True)
-            v.write(number(level,0)+' ('+signed(distance,0)+' pts)' if level is not None else 'N/A',
-                    x+83,704+j*23,160,7.5,GREEN if j==0 else RED if j==1 else INK,True)
-        if row.get('status') not in ('PASS','PROVISIONAL'):
-            v.write(label_reason(row),x,774,243,6.2,AMBER,max_lines=2)
+        cash=daily(key) or {}
+        high,low=cash.get('high'),cash.get('low')
+        levels=traditional_pivots(high,low,cash.get('close'))
+        v.write(name,x,685,width,9,INK,True)
+        for j,(label,ink) in enumerate((('S',GREEN),('R',RED))):
+            ladder=' / '.join(number(point,0) for point in levels[j]) if levels else 'N/A'
+            v.write(label+'  '+ladder,x,704+j*17,width,8,ink if levels else AMBER,True)
+        v.write('PDH: '+(number(high) if levels else 'N/A'),x,743,width,7.6,MUTED)
+        v.write('PDL: '+(number(low) if levels else 'N/A'),x,757,width,7.6,MUTED)
+        if levels:
+            session=dt.date.fromisoformat(cash['latest_date']).strftime('%d %b')
+            v.write(session+' | '+str(cash.get('source') or 'Completed daily candle'),
+                    x,773,width,6.6,MUTED,url=cash.get('range_source_url'))
+        else:
+            why=('Prior-session high/low unavailable' if high is None or low is None
+                 else 'Prior-session range cannot produce pivots')
+            v.write(why,x,773,width,6.6,AMBER,max_lines=2)
     v.c.showPage()
 
     # PAGE 3: dated news, events and explicit gaps

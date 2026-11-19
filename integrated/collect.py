@@ -137,11 +137,13 @@ def index_daily(api, key, sessions, cutoff, exchange='NSE'):
         raise flows.CheckFailure('Two completed '+exchange+' sessions are required')
     path=('/historical-candle/'+urllib.parse.quote(key,safe='')+'/days/1/'
           +sessions[0]+'/'+sessions[1])
-    bars=flows.daily_bars(api.get(path,version='v3'),cutoff)
+    bars=flows.daily_bars(api.get(path,version='v3'),cutoff,include_range=True)
     if any(day not in bars for day in sessions[:2]):
         raise flows.CheckFailure('Daily close missing for a required '+exchange+' session')
-    current=Decimal(bars[sessions[0]]['close']);previous=Decimal(bars[sessions[1]]['close'])
+    daily=bars[sessions[0]]
+    current=Decimal(daily['close']);previous=Decimal(bars[sessions[1]]['close'])
     return clean({'status':'PASS','latest_date':sessions[0],'previous_date':sessions[1],
+                  'high':daily['high'],'low':daily['low'],'source':'Upstox daily candle',
                   'close':current,'previous_close':previous,'change':current-previous,
                   'change_pct':(current-previous)*100/previous,'unit':'index points'})
 

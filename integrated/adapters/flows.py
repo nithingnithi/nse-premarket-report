@@ -294,7 +294,7 @@ def search_future(api, name, underlying, today):
     raise CheckFailure("Instrument search did not terminate within the page limit.")
 
 
-def daily_bars(data, now):
+def daily_bars(data, now, *, include_range=False):
     if not isinstance(data, dict) or not isinstance(data.get("candles"), list):
         raise CheckFailure("Daily candle data is missing.")
     bars = {}
@@ -317,6 +317,8 @@ def daily_bars(data, now):
         bars[date] = {"date": date, "bar_start_IST": stamp.isoformat(timespec="seconds"),
                       "close": decimal_text(close), "volume": require_count(row[5]),
                       "oi_raw": require_count(row[6])}
+        if include_range:
+            bars[date].update(high=decimal_text(high), low=decimal_text(low))
     return bars
 
 

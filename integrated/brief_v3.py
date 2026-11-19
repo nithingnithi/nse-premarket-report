@@ -13,6 +13,17 @@ def finite_positive(value):
     except (InvalidOperation, TypeError, ValueError):
         return None
 
+def traditional_pivots(high, low, close):
+    """Return S1–S3 and R1–R3 from a completed session's H/L/C."""
+    high, low, close = map(finite_positive, (high, low, close))
+    if None in (high, low, close) or low >= high or not low <= close <= high:
+        return None
+    pivot = (high + low + close) / 3
+    spread = high - low
+    support = (2 * pivot - high, pivot - spread, low - 2 * (high - pivot))
+    resistance = (2 * pivot - low, pivot + spread, high + 2 * (pivot - low))
+    return (support, resistance) if support[-1] > 0 else None
+
 def futures_point(rows, sessions):
     """Nifty's nearest selected future, same instrument/expiry on D and D-1."""
     matches = [r for r in rows if r.get('check') == 'NIFTY futures']
