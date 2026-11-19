@@ -77,11 +77,15 @@ class SBISources(unittest.TestCase):
                 return {'data': {sbi.INSTRUMENT: [
                     {'heading': 'SBI headline at cutoff',
                      'published_time': int(CUTOFF.timestamp()*1000),
-                     'article_link': 'https://upstox.com/news/fixture/'}]},
+                     'article_link': 'https://upstox.com/news/fixture/'},
+                    {'heading': 'Public sector banks report results',
+                     'published_time': int(CUTOFF.timestamp()*1000)-60_000,
+                     'article_link': 'https://upstox.com/news/sector/'}]},
                     'metadata': {'page': {'page_number': 1, 'page_size': 100,
-                                          'total_pages': 1, 'total_records': 1}}}
+                                          'total_pages': 1, 'total_records': 2}}}
         api = API()
         result = sbi.news(api, CUTOFF, observed_at=CUTOFF)
         self.assertEqual(api.keys, 'NSE_EQ|INE062A01020')
         self.assertEqual(result['status'], 'PASS')
         self.assertEqual(result['articles'][0]['title'], 'SBI headline at cutoff')
+        self.assertEqual(result['articles'][1]['source'], 'SBIN-tagged / Upstox')

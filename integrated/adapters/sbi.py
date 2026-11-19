@@ -13,6 +13,8 @@ from integrated.adapters import global_data
 ISIN = 'INE062A01020'
 INSTRUMENT = 'NSE_EQ|' + ISIN
 SYMBOL = re.compile(r'\b(?:SBIN|State Bank of India)\b', re.I)
+SBI_HEADLINE = re.compile(
+    r'\b(?:SBIN|State Bank of India|SBI(?!\s+(?:Life|Cards?|Mutual Fund|General Insurance)\b))\b', re.I)
 RSS_BASE = 'https://nsearchives.nseindia.com/content/RSS/'
 FILINGS = {'announcements': ('Online_announcements.xml', 'SBI exchange announcement'),
            'board_meetings': ('Board_Meetings.xml', 'SBI board meeting'),
@@ -35,7 +37,9 @@ def news(api, cutoff, *, observed_at=None):
                                              instrument_keys=(INSTRUMENT,))
     selected, _ = global_data.window_news(rows, cutoff)
     result = {'status': 'PARTIAL' if total_pages > 1 else 'PASS',
-              'articles': [{**row, 'source': 'SBI / Upstox'} for row in selected[:3]]}
+              'articles': [{**row, 'source': ('SBI / Upstox' if SBI_HEADLINE.search(row['title'])
+                                                   else 'SBIN-tagged / Upstox')}
+                           for row in selected[:3]]}
     if total_pages > 1:
         result['reason'] = 'Only the first news page was checked'
     return result

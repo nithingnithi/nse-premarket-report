@@ -540,7 +540,7 @@ def render_visual(s, review, path):
         source=story.get('source') or urlsplit(story.get('url') or '').hostname or 'Source N/A'
         v.write(str(source)+' / '+stamp(story.get('published_IST')),x+11,y+10,240,6.7,BLUE,True,max_lines=2)
         title = story.get('title') or 'N/A: headline missing'
-        if story.get('source') in ('SBI / Upstox', 'SBI / Marketaux', 'SBI / NSE') and len(title) > 140:
+        if story.get('source') in ('SBI / Upstox', 'SBIN-tagged / Upstox', 'SBI / Marketaux', 'SBI / NSE') and len(title) > 140:
             title = title[:137].rstrip() + '...'
         v.write(title,x+11,y+25,240,8,INK,True,max_lines=3,url=story.get('url'))
     v.section('Catalyst calendar / IST',472,'Only saved and dated events')
