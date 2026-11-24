@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-24",
+  "cutoff_IST": "2026-11-24T07:45:00+05:30",
+  "collected_at_IST": "2026-11-24T17:53:43.878874+05:30",
+  "mode": "MORNING_BRIEF",
+  "source_run": "45393055030",
+  "options": {},
+  "global": [],
+  "calendar": [],
+  "news": [],
+  "vix_flag": "UNKNOWN",
+  "score": {
+    "signals": {
+      "futures_build_up": null,
+      "pcr_direction": null,
+      "strike_walls": null,
+      "fii_futures": null,
+      "fii_cash": null,
+      "dii_cash": null
+    },
+    "score": 0,
+    "available": 0,
+    "total": 6,
+    "missing": [
+      "futures_build_up",
+      "pcr_direction",
+      "strike_walls",
+      "fii_futures",
+      "fii_cash",
+      "dii_cash"
+    ],
+    "missing_count": 6,
+    "score_range": [
+      -6,
+      6
+    ],
+    "possible_categories": [
+      "BEARISH",
+      "NEUTRAL",
+      "BULLISH"
+    ],
+    "bias": "INSUFFICIENT DATA TO ASSIGN FINAL BIAS"
+  },
+  "limitations": [
+    "Cash: \u20b9 cr per user assumption; no rescaling. Futures and option OI use raw provider counts.",
+    "PCR and walls are correlated; no DII-offset bonus.",
+    "Provider redistribution rights remain unverified."
+  ],
+  "trading_day": "CLOSED",
+  "collection_status": "CLOSED",
+  "timing": "LATE_COLLECTION"
+}
