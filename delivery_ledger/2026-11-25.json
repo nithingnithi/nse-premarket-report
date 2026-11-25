@@ -1,5 +1,6 @@
 {
   "report_date": "2026-11-25",
-  "status": "RESERVED_UNCERTAIN_UNTIL_VERIFIED",
-  "run_id": "45531806466"
+  "status": "SENT",
+  "pdf_sha256": "81f029459fdfaec26c9fd0f11515f5976ac7029853a3787fc33d700138dff50b",
+  "message_id": 18
 }
