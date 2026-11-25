@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-25",
+  "snapshot_sha256": "45ec4e013fb0db1da0fc62f31c340d4418bebc0aa388be8d9543dcb55d0c7778",
+  "summary": "At 07:45 IST the score is -4 from 6/6 available signals. Possible range: -4 to -4. Bias: BEARISH. Missing: none. India VIX caution is separate from the score. Prices retain their source times; unavailable fields are N/A.",
+  "alerts": [
+    "GIFT vs Nifty close: +390.85 pts",
+    "Nifty put wall 24000.00; call wall 26000.00.",
+    "India VIX: NORMAL; 6/6 score signals available."
+  ],
+  "mcp_context": []
+}
