@@ -1,7 +1,7 @@
 {
-  "report_date": "2026-11-26",
-  "path": "handoff/2026-11-26.json",
-  "snapshot_sha256": "e35c9deb5888e80c9f466391b0bfec25a3bada3d7d69985d54e132b16cff8d2b",
+  "report_date": "2026-11-27",
+  "path": "handoff/2026-11-27.json",
+  "snapshot_sha256": "2ab045a386b3fbdd3109adb475061dbb1b7d20432c3ace6b3ae6f0ab9ed5b3b1",
   "status": "PARTIAL",
   "trading_day": "OPEN"
 }
